@@ -5,10 +5,12 @@ import PropTypes from "prop-types";
 import { Button, Badge, Input, Modal, Select } from "@/shared/components";
 import { AI_PROVIDERS } from "@/shared/constants/providers";
 import { planBulkAdd } from "@/shared/utils/bulkAdd";
+import { useTenantStore } from "@/store/tenantStore";
 
 const BULK_PLACEHOLDER = `name1|sk-key1\nname2|sk-key2\nsk-key-only-auto-named`;
 
 export default function AddApiKeyModal({ isOpen, provider, providerName, isCompatible, isAnthropic, authType, authHint, website, proxyPools, error, existingNames, onSave, onBulkDone, onClose }) {
+  const selectedTenantId = useTenantStore((s) => s.selectedTenantId);
   const NONE_PROXY_POOL_VALUE = "__none__";
   const isOllamaLocal = provider === "ollama-local";
   const isCookie = authType === "cookie";
@@ -172,6 +174,7 @@ export default function AddApiKeyModal({ isOpen, provider, providerName, isCompa
             priority: 1,
             testStatus: isValid ? "active" : "unknown",
             ...(entry.providerSpecificData ? { providerSpecificData: entry.providerSpecificData } : {}),
+            ...(selectedTenantId ? { tenantId: selectedTenantId } : {}),
           }),
         });
         if (res.ok) success++;

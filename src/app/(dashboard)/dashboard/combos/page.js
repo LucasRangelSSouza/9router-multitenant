@@ -9,6 +9,7 @@ import { Card, Button, Modal, Input, CardSkeleton, ModelSelectModal, ConfirmModa
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { useModelCaps } from "@/shared/hooks/useModelCaps";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
+import { useTenantStore } from "@/store/tenantStore";
 
 // Validate combo name: only a-z, A-Z, 0-9, -, _
 const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
@@ -55,16 +56,19 @@ export default function CombosPage() {
   const { getCaps } = useModelCaps();
   const [confirmState, setConfirmState] = useState(null);
   const { copied, copy } = useCopyToClipboard();
+  const selectedTenantId = useTenantStore((s) => s.selectedTenantId);
 
   useEffect(() => {
+    setLoading(true);
     fetchData();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedTenantId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchData = async () => {
     try {
+      const tenantQS = selectedTenantId ? `?tenantId=${encodeURIComponent(selectedTenantId)}` : "";
       const [combosRes, providersRes, settingsRes] = await Promise.all([
-        fetch("/api/combos"),
-        fetch("/api/providers"),
+        fetch(`/api/combos${tenantQS}`),
+        fetch(`/api/providers${tenantQS}`),
         fetch("/api/settings"),
       ]);
       const combosData = await combosRes.json();
@@ -108,7 +112,10 @@ export default function CombosPage() {
       const res = await fetch("/api/combos", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          ...data,
+          ...(selectedTenantId ? { tenantId: selectedTenantId } : {}),
+        }),
       });
       if (res.ok) {
         await fetchData();

@@ -23,6 +23,7 @@ import Link from "next/link";
 import { getErrorCode, getRelativeTime } from "@/shared/utils";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useHeaderSearchStore } from "@/store/headerSearchStore";
+import { useTenantStore } from "@/store/tenantStore";
 import ModelAvailabilityBadge from "./components/ModelAvailabilityBadge";
 import AddCompatibleModal from "./components/AddCompatibleModal";
 
@@ -109,6 +110,7 @@ export default function ProvidersPage() {
   const searchQuery = useHeaderSearchStore((s) => s.query);
   const registerSearch = useHeaderSearchStore((s) => s.register);
   const unregisterSearch = useHeaderSearchStore((s) => s.unregister);
+  const selectedTenantId = useTenantStore((s) => s.selectedTenantId);
 
   useEffect(() => {
     registerSearch("Search providers...");
@@ -148,8 +150,11 @@ export default function ProvidersPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
+        const providersUrl = selectedTenantId
+          ? `/api/providers?tenantId=${encodeURIComponent(selectedTenantId)}`
+          : "/api/providers";
         const [connectionsRes, nodesRes] = await Promise.all([
-          fetch("/api/providers"),
+          fetch(providersUrl),
           fetch("/api/provider-nodes"),
         ]);
         const connectionsData = await connectionsRes.json();
@@ -163,8 +168,9 @@ export default function ProvidersPage() {
         setLoading(false);
       }
     };
+    setLoading(true);
     fetchData();
-  }, []);
+  }, [selectedTenantId]);
 
   const getProviderStats = (providerId, authType) => {
     const authTypes = Array.isArray(authType) ? authType : [authType];
