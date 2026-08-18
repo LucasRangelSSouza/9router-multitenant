@@ -1,3 +1,22 @@
+> ## 🍴 This is a fork — read this first
+>
+> This is a fork of [decolua/9router](https://github.com/decolua/9router) (MIT licensed) adding **real multi-tenant isolation**, built by [Rangel Tech](https://rangeltech.net) for running one shared 9Router instance across several independent customers/tenants.
+>
+> **The problem this fork solves**: in upstream 9Router, `apiKeys`, `combos` and `providerConnections` have no owner — any valid consumption key can reach any combo, and account selection for a given provider picks from *every* active connection of that provider in the instance, regardless of who made the request. That's fine for a single person running their own instance, but it means two customers sharing one instance could have their requests served by each other's connected accounts — unacceptable when one of those accounts is someone's personal Claude/Copilot/etc. subscription.
+>
+> **What's added**:
+> - A `tenants` table, and a nullable `tenantId` column on `apiKeys`, `combos` and `providerConnections`.
+> - `getApiKeyAuth(key)` resolves which tenant owns a consumption key.
+> - The core account-selection function (`getProviderCredentials`) and combo lookup (`getComboByName`) filter by `tenantId` when it's provided — a request authenticated with tenant A's key can only ever be served by tenant A's own connections/combos, never tenant B's, even if both connect the same provider.
+> - Propagated through every request handler (chat, embeddings, images, TTS, STT, search, fetch, video).
+> - A simple tenant switcher in the dashboard (combo box + "new tenant"), and `tenantId` support in the Providers/Combos admin API.
+> - **Fully backward compatible**: omit `tenantId` anywhere and behavior is byte-identical to upstream — existing single-tenant setups are unaffected. Rows created before this patch (`tenantId IS NULL`) stay visible to every tenant until explicitly migrated, so no existing data is orphaned.
+> - A dedicated end-to-end test (`tests/unit/multi-tenant-isolation.test.js`) proves isolation holds, including the critical case: a tenant with zero connections of its own never receives another tenant's connection.
+>
+> **Status**: validated with a full test suite pass (isolation test + no regressions on the existing suite) and a real `npm run build`. Not yet run against a production multi-tenant workload with real provider credentials — do your own review before trusting it with anything sensitive, same as you would for any fork.
+>
+> Everything below this notice is the original upstream README.
+
 <div align="center">
   <img src="./images/9router.png?1" alt="9Router Dashboard" width="800"/>
   
