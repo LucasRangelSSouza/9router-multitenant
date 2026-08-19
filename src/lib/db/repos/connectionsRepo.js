@@ -115,11 +115,20 @@ export async function createProviderConnection(data) {
   db.transaction(() => {
     const all = db.all(`SELECT * FROM providerConnections WHERE provider = ?`, [data.provider]).map(rowToConn);
 
+    // Dedup must never cross tenant boundaries — two different tenants can
+    // legitimately register a connection with the same name/email/workspace
+    // (e.g. both name a key "Gemini"), and without this guard the second
+    // POST silently overwrites the first tenant's row via the upsert below
+    // instead of creating an isolated one (found 2026-08-19, live migration).
+    const incomingTenantId = data.tenantId || null;
+    const sameTenant = c => (c.tenantId || null) === incomingTenantId;
+
     let existing = null;
     if (data.authType === "oauth" && data.email) {
       const incomingUsername = data.providerSpecificData?.username;
       const incomingWs = data.providerSpecificData?.chatgptAccountId;
       existing = all.find(c => {
+        if (!sameTenant(c)) return false;
         if (c.authType !== "oauth" || c.email !== data.email) return false;
 
         // Codex/OpenAI can issue multiple OAuth grants for the same email.
@@ -150,7 +159,7 @@ export async function createProviderConnection(data) {
         return true;
       });
     } else if (data.authType === "apikey" && data.name) {
-      existing = all.find(c => c.authType === "apikey" && c.name === data.name);
+      existing = all.find(c => sameTenant(c) && c.authType === "apikey" && c.name === data.name);
     }
     // access_token: never dedup — user manages duplicates manually
 
