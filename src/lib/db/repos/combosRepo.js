@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { isStrict, requireTenantOrThrow } from "../../tenancy.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 function rowToCombo(row) {
@@ -26,7 +27,9 @@ export async function getCombos(tenantId = undefined) {
     return rows.map(rowToCombo);
   }
   const rows = db.all(
-    `SELECT * FROM combos WHERE tenantId = ? OR tenantId IS NULL ORDER BY createdAt ASC`,
+    isStrict()
+      ? `SELECT * FROM combos WHERE tenantId = ? ORDER BY createdAt ASC`
+      : `SELECT * FROM combos WHERE tenantId = ? OR tenantId IS NULL ORDER BY createdAt ASC`,
     [tenantId]
   );
   return rows.map(rowToCombo);
@@ -46,13 +49,16 @@ export async function getComboByName(name, tenantId = undefined) {
     return rowToCombo(row);
   }
   const row = db.get(
-    `SELECT * FROM combos WHERE name = ? AND (tenantId = ? OR tenantId IS NULL)`,
+    isStrict()
+      ? `SELECT * FROM combos WHERE name = ? AND tenantId = ?`
+      : `SELECT * FROM combos WHERE name = ? AND (tenantId = ? OR tenantId IS NULL)`,
     [name, tenantId]
   );
   return rowToCombo(row);
 }
 
 export async function createCombo(data) {
+  requireTenantOrThrow(data.tenantId, "combo");
   const db = await getAdapter();
   const now = new Date().toISOString();
   const combo = {

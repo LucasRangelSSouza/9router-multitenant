@@ -1,3 +1,4 @@
+import { ownershipGuard } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import {
   getProviderConnectionById,
@@ -63,6 +64,8 @@ function shouldMergeProviderSpecificData(existing, incoming, hasLegacyProxy, has
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "connection", id);
+    if (denied) return denied;
     const connection = await getProviderConnectionById(id);
 
     if (!connection) {
@@ -87,6 +90,8 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "connection", id);
+    if (denied) return denied;
     const body = await request.json();
     const {
       name,
@@ -175,6 +180,8 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "connection", id);
+    if (denied) return denied;
 
     const deleted = await deleteProviderConnection(id);
     if (!deleted) {

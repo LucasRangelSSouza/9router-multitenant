@@ -1,4 +1,5 @@
 // Re-export from open-sse with localDb integration
+import { isStrict } from "@/lib/tenancy.js";
 import { getModelAliases, getComboByName, getProviderNodes } from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
@@ -76,7 +77,7 @@ export async function getModelInfo(modelStr, tenantId = null) {
   // This prevents combo names from being incorrectly routed to providers
   const combo = tenantId
     ? await getComboByName(parsed.model, tenantId)
-    : await getComboByName(parsed.model);
+    : (isStrict() ? null : await getComboByName(parsed.model));
   if (combo) {
     // Return null provider to signal this should be handled as combo
     // The caller (handleChat) will detect this and handle it as combo
@@ -98,7 +99,7 @@ export async function getComboModels(modelStr, tenantId = null) {
 
   const combo = tenantId
     ? await getComboByName(modelStr, tenantId)
-    : await getComboByName(modelStr);
+    : (isStrict() ? null : await getComboByName(modelStr));
   if (combo && combo.models && combo.models.length > 0) {
     return combo.models;
   }

@@ -1,3 +1,4 @@
+import { tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import {
   getProvider,
@@ -285,6 +286,7 @@ export async function POST(request, { params }) {
               ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
               : null,
             testStatus: "active",
+            tenantId: tenantIdFromRequest(request, body),
           });
           return NextResponse.json({
             success: true,
@@ -329,6 +331,7 @@ export async function POST(request, { params }) {
           email: email || null,
           providerSpecificData,
           testStatus: "active",
+          tenantId: tenantIdFromRequest(request, body),
         });
 
         return NextResponse.json({
@@ -360,6 +363,7 @@ export async function POST(request, { params }) {
           ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString() 
           : null,
         testStatus: "active",
+        tenantId: tenantIdFromRequest(request, body),
       });
 
       return NextResponse.json({ 
@@ -416,6 +420,7 @@ export async function POST(request, { params }) {
             ? new Date(Date.now() + result.tokens.expiresIn * 1000).toISOString() 
             : null,
           testStatus: "active",
+          tenantId: tenantIdFromRequest(request, body),
         });
 
         return NextResponse.json({ 

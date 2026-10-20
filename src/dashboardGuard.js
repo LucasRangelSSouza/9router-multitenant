@@ -178,7 +178,21 @@ async function loadSettings() {
   }
 }
 
+// Token de servico para o BFF (server-to-server). Defina MT_ADMIN_TOKEN (>= 32 chars).
+function safeEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+function hasValidAdminToken(request) {
+  const expected = process.env.MT_ADMIN_TOKEN;
+  if (!expected || expected.length < 32) return false;
+  return safeEqual(request.headers.get("x-admin-token") || "", expected);
+}
+
 async function isAuthenticated(request) {
+  if (hasValidAdminToken(request)) return true;
   if (await hasValidToken(request)) return true;
   const settings = await loadSettings();
   if (settings && settings.requireLogin === false) return true;

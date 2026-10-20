@@ -1,3 +1,4 @@
+import { tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
@@ -33,6 +34,7 @@ export async function POST(request) {
     // API keys never expire on a fixed schedule; persist a long horizon so the
     // proactive refresh path (which requires a refreshToken anyway) is skipped.
     const connection = await createProviderConnection({
+      tenantId: tenantIdFromRequest(request),
       provider: "kiro",
       authType: "api_key",
       accessToken: credential.accessToken,

@@ -1,3 +1,4 @@
+import { isStrict, tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import {
   getProviderConnections,
@@ -90,7 +91,12 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
-    const { apiKey, name, displayName, priority, globalPriority, defaultModel, testStatus, tenantId } = body;
+    const { apiKey, name, displayName, priority, globalPriority, defaultModel, testStatus } = body;
+    const tenantId = tenantIdFromRequest(request, body);
+    if (isStrict() && !tenantId) {
+      return NextResponse.json({ error: "tenantId is required (MT_STRICT=1)" }, { status: 400 });
+    }
+
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
