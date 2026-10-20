@@ -8,13 +8,12 @@ on:
 
 env:
   GHCR_IMAGE: ghcr.io/${{ github.repository }}
-  DOCKERHUB_IMAGE: decolua/9router
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
@@ -29,19 +28,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: |
             ${{ env.GHCR_IMAGE }}
-            ${{ env.DOCKERHUB_IMAGE }}
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
@@ -58,3 +50,41 @@ jobs:
           platforms: linux/amd64,linux/arm64
           provenance: false
           sbom: false
+
+      - name: Gerar artefato oficial para a VPS
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          IMAGE="llm-gateway:${TAG}"
+          docker buildx build --platform linux/amd64 --load -t "$IMAGE" .
+          docker save "$IMAGE" | gzip -n > llm-gateway.image.tar.gz
+          SHA="$(sha256sum llm-gateway.image.tar.gz | awk '{print $1}')"
+          IMAGE_ID="$(docker image inspect "$IMAGE" --format '{{.Id}}')"
+          export SHA IMAGE_ID
+          python3 - <<'PY'
+          import json, os
+          json.dump({
+            "schema": 1,
+            "repo": os.environ["REPO"],
+            "service": "llm-gateway",
+            "version": os.environ["TAG"],
+            "commit": os.environ["COMMIT"],
+            "artifact": {
+              "type": "docker-archive",
+              "asset": "llm-gateway.image.tar.gz",
+              "sha256": os.environ["SHA"],
+              "image_id": os.environ["IMAGE_ID"],
+            },
+            "healthcheck": {"timeout_s": 90},
+            "env": {"required": ["MT_ADMIN_TOKEN"]},
+          }, open("release-manifest.llm-gateway.json", "w"), separators=(",", ":"))
+          PY
+
+      - name: Anexar artefato ao release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "$TAG" llm-gateway.image.tar.gz release-manifest.llm-gateway.json --clobber
