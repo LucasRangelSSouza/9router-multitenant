@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { isStrict, requireTenantOrThrow } from "../../tenancy.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 function rowToCombo(row) {
@@ -9,6 +10,7 @@ function rowToCombo(row) {
     name: row.name,
     kind: row.kind,
     models: parseJson(row.models, []),
+    strategy: parseJson(row.strategy, null),
     tenantId: row.tenantId ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -26,7 +28,9 @@ export async function getCombos(tenantId = undefined) {
     return rows.map(rowToCombo);
   }
   const rows = db.all(
-    `SELECT * FROM combos WHERE tenantId = ? OR tenantId IS NULL ORDER BY createdAt ASC`,
+    isStrict()
+      ? `SELECT * FROM combos WHERE tenantId = ? ORDER BY createdAt ASC`
+      : `SELECT * FROM combos WHERE tenantId = ? OR tenantId IS NULL ORDER BY createdAt ASC`,
     [tenantId]
   );
   return rows.map(rowToCombo);
@@ -46,13 +50,16 @@ export async function getComboByName(name, tenantId = undefined) {
     return rowToCombo(row);
   }
   const row = db.get(
-    `SELECT * FROM combos WHERE name = ? AND (tenantId = ? OR tenantId IS NULL)`,
+    isStrict()
+      ? `SELECT * FROM combos WHERE name = ? AND tenantId = ?`
+      : `SELECT * FROM combos WHERE name = ? AND (tenantId = ? OR tenantId IS NULL)`,
     [name, tenantId]
   );
   return rowToCombo(row);
 }
 
 export async function createCombo(data) {
+  requireTenantOrThrow(data.tenantId, "combo");
   const db = await getAdapter();
   const now = new Date().toISOString();
   const combo = {
@@ -60,13 +67,14 @@ export async function createCombo(data) {
     name: data.name,
     kind: data.kind || null,
     models: data.models || [],
+    strategy: data.strategy || null,
     tenantId: data.tenantId || null,
     createdAt: now,
     updatedAt: now,
   };
   db.run(
-    `INSERT INTO combos(id, name, kind, models, tenantId, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
-    [combo.id, combo.name, combo.kind, stringifyJson(combo.models), combo.tenantId, combo.createdAt, combo.updatedAt]
+    `INSERT INTO combos(id, name, kind, models, strategy, tenantId, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+    [combo.id, combo.name, combo.kind, stringifyJson(combo.models), combo.strategy ? stringifyJson(combo.strategy) : null, combo.tenantId, combo.createdAt, combo.updatedAt]
   );
   return combo;
 }
@@ -79,8 +87,8 @@ export async function updateCombo(id, data) {
     if (!row) return;
     const merged = { ...rowToCombo(row), ...data, updatedAt: new Date().toISOString() };
     db.run(
-      `UPDATE combos SET name = ?, kind = ?, models = ?, tenantId = ?, updatedAt = ? WHERE id = ?`,
-      [merged.name, merged.kind, stringifyJson(merged.models || []), merged.tenantId ?? null, merged.updatedAt, id]
+      `UPDATE combos SET name = ?, kind = ?, models = ?, strategy = ?, tenantId = ?, updatedAt = ? WHERE id = ?`,
+      [merged.name, merged.kind, stringifyJson(merged.models || []), merged.strategy ? stringifyJson(merged.strategy) : null, merged.tenantId ?? null, merged.updatedAt, id]
     );
     result = merged;
   });

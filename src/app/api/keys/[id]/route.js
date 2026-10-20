@@ -1,14 +1,19 @@
+import { ownershipGuard } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { deleteApiKey, getApiKeyById, updateApiKey } from "@/lib/localDb";
+import { validateAllowedCombos } from "@/lib/keyScope.js";
 
 // GET /api/keys/[id] - Get single key
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "key", id);
+    if (denied) return denied;
     const key = await getApiKeyById(id);
     if (!key) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
+    if (request.headers.get("x-tenant-id")) key.key = `${String(key.key).slice(0, 8)}***`;
     return NextResponse.json({ key });
   } catch (error) {
     console.log("Error fetching key:", error);
@@ -20,6 +25,8 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "key", id);
+    if (denied) return denied;
     const body = await request.json();
     const { isActive } = body;
 
@@ -30,9 +37,15 @@ export async function PUT(request, { params }) {
 
     const updateData = {};
     if (isActive !== undefined) updateData.isActive = isActive;
+    if (body.allowedCombos !== undefined) {
+      const allowed = await validateAllowedCombos(existing.tenantId, body.allowedCombos);
+      if (allowed.error) return NextResponse.json({ error: allowed.error }, { status: 400 });
+      updateData.allowedCombos = allowed.value;
+    }
 
     const updated = await updateApiKey(id, updateData);
 
+    if (request.headers.get("x-tenant-id") && updated) updated.key = `${String(updated.key).slice(0, 8)}***`;
     return NextResponse.json({ key: updated });
   } catch (error) {
     console.log("Error updating key:", error);
@@ -44,6 +57,8 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "key", id);
+    if (denied) return denied;
 
     const deleted = await deleteApiKey(id);
     if (!deleted) {

@@ -1,3 +1,4 @@
+import { ownershipGuard } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { testSingleConnection } from "./testUtils.js";
 
@@ -5,6 +6,8 @@ import { testSingleConnection } from "./testUtils.js";
 export async function POST(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "connection", id);
+    if (denied) return denied;
     const result = await testSingleConnection(id);
 
     if (result.error === "Connection not found") {

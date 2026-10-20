@@ -1,3 +1,4 @@
+import { tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { normalizeKiroExternalIdpAuth } from "@/lib/oauth/kiroExternalIdp";
@@ -13,6 +14,7 @@ export async function POST(request) {
     const tokenData = normalizeKiroExternalIdpAuth(rawAuth);
 
     const connection = await createProviderConnection({
+      tenantId: tenantIdFromRequest(request),
       provider: "kiro",
       authType: "oauth",
       accessToken: tokenData.accessToken,

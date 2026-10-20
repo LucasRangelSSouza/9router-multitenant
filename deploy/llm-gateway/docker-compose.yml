@@ -1,0 +1,57 @@
+# llm-gateway: instancia unica do fork multi-tenant do 9Router (Fase G do Luar).
+# Referencia para o repo de infra (vps_rt_infra). NAO aplicar sem o release/lock (K-10).
+#
+# Regras:
+#  - sem porta publicada: so consumidores na rede llm-gw-net alcancam http://llm-gateway:20128
+#  - imagem sempre por digest (build do CI), nunca :latest
+#  - MT_ADMIN_TOKEN so no BFF (Rails) e no motor; chega por arquivo de secret, nunca por log
+#  - volume proprio; tokens OAuth e chaves ficam em texto claro no SQLite (decisao do dono,
+#    risco aceito): volume 0700, sem exposicao publica, backup so pelo fluxo existente
+services:
+  llm-gateway:
+    image: ${LLM_GATEWAY_IMAGE:?informe a imagem por digest}
+    container_name: llm-gateway
+    restart: unless-stopped
+    networks: [llm-gw-net]
+    expose: ["20128"]
+    environment:
+      NODE_ENV: production
+      PORT: "20128"
+      HOSTNAME: 0.0.0.0
+      DATA_DIR: /app/data
+      MT_STRICT: "1"
+      # token de servico (>= 32 chars). Gere com: python -c "import secrets;print(secrets.token_urlsafe(48))"
+      MT_ADMIN_TOKEN_FILE: /run/secrets/mt_admin_token
+      # senha do painel do operador (nao exposto fora da VPS). Sem ela o painel exige senha local.
+      INITIAL_PASSWORD_FILE: /run/secrets/llm_gateway_operator_password
+      # tenants nao apontam provedor para loopback/rede privada (anti-SSRF); NAO ligar em producao
+      MT_ALLOW_PRIVATE_URLS: "0"
+    secrets: [mt_admin_token, llm_gateway_operator_password]
+    volumes:
+      - llm-gateway-data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:20128/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    mem_limit: 768m
+    cpus: 1.5
+    security_opt: ["no-new-privileges:true"]
+
+networks:
+  # bridge propria: o gateway precisa de saida para os provedores, mas so quem entra nesta rede o alcanca.
+  # Complemento obrigatorio: regras de egress em egress-rules.sh (bloqueia RFC1918/metadata a partir desta rede).
+  llm-gw-net:
+    name: llm-gw-net
+    driver: bridge
+
+volumes:
+  llm-gateway-data:
+    name: llm-gateway-data
+
+secrets:
+  mt_admin_token:
+    file: ${SECRETS_DIR:-/opt/rt/secrets}/mt_admin_token
+  llm_gateway_operator_password:
+    file: ${SECRETS_DIR:-/opt/rt/secrets}/llm_gateway_operator_password

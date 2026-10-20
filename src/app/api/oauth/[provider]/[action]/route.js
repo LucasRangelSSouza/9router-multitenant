@@ -1,3 +1,4 @@
+import { tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import {
   getProvider,
@@ -37,7 +38,7 @@ import {
 import { detectIdeInstalled } from "@/lib/oauth/utils/ideDetect";
 import { ZED_HOSTED_CONFIG } from "@/lib/oauth/constants/oauth";
 
-async function completeXaiManualCode(code, state) {
+async function completeXaiManualCode(code, state, tenantId = null) {
   const session = state ? getXaiSessionStatus(state) : null;
   if (!session) {
     throw new Error("xAI OAuth session not found; restart the login flow and paste the code again");
@@ -60,6 +61,7 @@ async function completeXaiManualCode(code, state) {
         ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
         : null,
       testStatus: "active",
+      tenantId,
     });
     clearXaiSession(state);
     stopXaiProxy();
@@ -285,6 +287,7 @@ export async function POST(request, { params }) {
               ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
               : null,
             testStatus: "active",
+            tenantId: tenantIdFromRequest(request, body),
           });
           return NextResponse.json({
             success: true,
@@ -329,6 +332,7 @@ export async function POST(request, { params }) {
           email: email || null,
           providerSpecificData,
           testStatus: "active",
+          tenantId: tenantIdFromRequest(request, body),
         });
 
         return NextResponse.json({
@@ -360,6 +364,7 @@ export async function POST(request, { params }) {
           ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString() 
           : null,
         testStatus: "active",
+        tenantId: tenantIdFromRequest(request, body),
       });
 
       return NextResponse.json({ 
@@ -416,6 +421,7 @@ export async function POST(request, { params }) {
             ? new Date(Date.now() + result.tokens.expiresIn * 1000).toISOString() 
             : null,
           testStatus: "active",
+          tenantId: tenantIdFromRequest(request, body),
         });
 
         return NextResponse.json({ 
@@ -443,7 +449,7 @@ export async function POST(request, { params }) {
         return NextResponse.json({ error: "Manual code only supported for xai" }, { status: 400 });
       }
       const { code, state } = body;
-      const connection = await completeXaiManualCode(String(code || "").trim(), String(state || "").trim());
+      const connection = await completeXaiManualCode(String(code || "").trim(), String(state || "").trim(), tenantIdFromRequest(request, body));
       return NextResponse.json({ success: true, connection });
     }
 

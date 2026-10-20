@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSettings, validateApiKey } from "@/lib/localDb";
+import { getSettings, validateApiKey, getTenantById } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
@@ -178,11 +178,72 @@ async function loadSettings() {
   }
 }
 
+// Token de servico para o BFF (server-to-server). Defina MT_ADMIN_TOKEN (>= 32 chars).
+function safeEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string" || a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+function hasValidAdminToken(request) {
+  const expected = process.env.MT_ADMIN_TOKEN;
+  if (!expected || expected.length < 32) return false;
+  return safeEqual(request.headers.get("x-admin-token") || "", expected);
+}
+
 async function isAuthenticated(request) {
+  if (hasValidAdminToken(request)) return true;
   if (await hasValidToken(request)) return true;
   const settings = await loadSettings();
   if (settings && settings.requireLogin === false) return true;
   return false;
+}
+
+// ---- Token de servico (BFF/motor) -------------------------------------------
+// O token de servico NAO e um admin global: so alcanca (a) provisionamento de
+// tenants e (b) a API de gerenciamento da lista abaixo, SEMPRE com x-tenant-id
+// da Account. Somente a criacao inicial aceita um id ainda inexistente. Qualquer outra rota /api/* (settings, proxy-pools,
+// cli-tools, usage global, models/*, ...) e do operador (cookie) e responde 403.
+const TENANT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+const SERVICE_TENANT_PATHS = [
+  /^\/api\/providers$/, /^\/api\/providers\/validate$/,
+  /^\/api\/providers\/(?!client$|test-batch$|suggested-models$)[^/]+$/, /^\/api\/providers\/[^/]+\/(test|models)$/,
+  /^\/api\/combos(\/[^/]+)?$/, /^\/api\/keys(\/[^/]+)?$/,
+  /^\/api\/provider-nodes(\/validate|\/[^/]+)?$/,
+  /^\/api\/oauth\/(?!.*(start-proxy|stop-proxy|poll-status|register-session|ide-status|auto-import)).+/,
+  /^\/api\/usage\/(?!chart$|history$|logs$|providers$|request-details$|request-logs$|stats$|stream$)[^/]+$/,
+];
+const SERVICE_TENANTS_COLLECTION = "/api/tenants";
+const SERVICE_TENANT_RESOURCE = /^\/api\/tenants\/([^/]+)$/;
+const SERVICE_TENANT_SELF = /^\/api\/tenants\/([^/]+)\/(usage|requests|summary)$/;
+
+async function serviceTokenGate(request, pathname) {
+  const deny = (status, error) => NextResponse.json({ error }, { status });
+  const header = request.headers.get("x-tenant-id");
+  const self = SERVICE_TENANT_SELF.exec(pathname);
+  // A chave de servico nao pode enumerar tenants. Ela so cria o tenant da
+  // Account atual, informando o id dela no cabecalho e no corpo da requisicao.
+  if (pathname === SERVICE_TENANTS_COLLECTION) {
+    if (request.method !== "POST") return deny(403, "Route not available to the service token");
+    if (!header || !TENANT_ID_RE.test(header)) return deny(400, "x-tenant-id header is required");
+    return null;
+  }
+  const resource = SERVICE_TENANT_RESOURCE.exec(pathname);
+  if (resource) {
+    if (!header || !TENANT_ID_RE.test(header)) return deny(400, "x-tenant-id header is required");
+    if (resource[1] !== header) return deny(403, "x-tenant-id does not match tenant in path");
+    if (!(await getTenantById(header))) return deny(404, "Tenant not found");
+    return null;
+  }
+  const scoped = self || SERVICE_TENANT_PATHS.some((re) => re.test(pathname));
+  if (!scoped) return deny(403, "Route not available to the service token");
+  if (!header || !TENANT_ID_RE.test(header)) return deny(400, "x-tenant-id header is required");
+  if (self && self[1] !== header) return deny(403, "x-tenant-id does not match tenant in path");
+  const q = new URL(request.url).searchParams.get("tenantId");
+  if (q && q !== header) return deny(400, "tenantId query conflicts with x-tenant-id");
+  const tenant = await getTenantById(header);
+  if (!tenant) return deny(404, "Tenant not found");
+  return null;
 }
 
 function isPublicApi(pathname) {
@@ -196,6 +257,7 @@ export const __test__ = {
   extractApiKey,
   canAccessPublicLlmApi,
   canAccessLocalOnlyRoute,
+  serviceTokenGate,
 };
 
 export async function proxy(request) {
@@ -223,6 +285,11 @@ export async function proxy(request) {
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
   if (pathname.startsWith("/api/")) {
     if (isPublicApi(pathname)) return NextResponse.next();
+    // token de servico sem cookie de operador: escopo restrito (ver serviceTokenGate)
+    if (hasValidAdminToken(request) && !(await hasValidToken(request))) {
+      const denied = await serviceTokenGate(request, pathname);
+      return denied || NextResponse.next();
+    }
     if (await hasValidCliToken(request) || await isAuthenticated(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

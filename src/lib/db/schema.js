@@ -3,7 +3,7 @@
 // pre-change safety backup in migrate.js: when the stored version is lower,
 // one lightweight DB backup is taken before applying schema changes. Forgetting
 // to bump only skips that backup — it does NOT break the additive auto-sync.
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 4;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -57,11 +57,12 @@ export const TABLES = {
       id: "TEXT PRIMARY KEY",
       type: "TEXT",
       name: "TEXT",
+      tenantId: "TEXT",
       data: "TEXT NOT NULL",
       createdAt: "TEXT NOT NULL",
       updatedAt: "TEXT NOT NULL",
     },
-    indexes: ["CREATE INDEX IF NOT EXISTS idx_pn_type ON providerNodes(type)"],
+    indexes: ["CREATE INDEX IF NOT EXISTS idx_pn_type ON providerNodes(type)", "CREATE INDEX IF NOT EXISTS idx_pn_tenant ON providerNodes(tenantId)"],
   },
   proxyPools: {
     columns: {
@@ -85,6 +86,7 @@ export const TABLES = {
       machineId: "TEXT",
       isActive: "INTEGER DEFAULT 1",
       tenantId: "TEXT",
+      allowedCombos: "TEXT",
       createdAt: "TEXT NOT NULL",
     },
     indexes: [
@@ -95,9 +97,10 @@ export const TABLES = {
   combos: {
     columns: {
       id: "TEXT PRIMARY KEY",
-      name: "TEXT UNIQUE NOT NULL",
+      name: "TEXT NOT NULL",
       kind: "TEXT",
       models: "TEXT NOT NULL",
+      strategy: "TEXT",
       tenantId: "TEXT",
       createdAt: "TEXT NOT NULL",
       updatedAt: "TEXT NOT NULL",
@@ -105,12 +108,15 @@ export const TABLES = {
     indexes: [
       "CREATE INDEX IF NOT EXISTS idx_combo_name ON combos(name)",
       "CREATE INDEX IF NOT EXISTS idx_combo_tenant ON combos(tenantId)",
+      "CREATE UNIQUE INDEX IF NOT EXISTS uq_combo_tenant_name ON combos(COALESCE(tenantId, ''), name)",
     ],
   },
   tenants: {
     columns: {
       id: "TEXT PRIMARY KEY",
       name: "TEXT NOT NULL",
+      rpm: "INTEGER",
+      status: "TEXT DEFAULT 'active'",
       createdAt: "TEXT NOT NULL",
     },
   },
@@ -131,6 +137,8 @@ export const TABLES = {
       model: "TEXT",
       connectionId: "TEXT",
       apiKey: "TEXT",
+      tenantId: "TEXT",
+      requestedModel: "TEXT",
       endpoint: "TEXT",
       promptTokens: "INTEGER DEFAULT 0",
       completionTokens: "INTEGER DEFAULT 0",
@@ -144,6 +152,7 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_uh_provider ON usageHistory(provider)",
       "CREATE INDEX IF NOT EXISTS idx_uh_model ON usageHistory(model)",
       "CREATE INDEX IF NOT EXISTS idx_uh_conn ON usageHistory(connectionId)",
+      "CREATE INDEX IF NOT EXISTS idx_uh_tenant_ts ON usageHistory(tenantId, timestamp DESC)",
     ],
   },
   usageDaily: {

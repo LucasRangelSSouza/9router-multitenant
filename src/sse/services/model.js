@@ -1,4 +1,5 @@
 // Re-export from open-sse with localDb integration
+import { isStrict } from "@/lib/tenancy.js";
 import { getModelAliases, getComboByName, getProviderNodes } from "@/lib/localDb";
 import { parseModel as parseModelCore, resolveModelAliasFromMap, getModelInfoCore } from "open-sse/services/model.js";
 import REGISTRY from "open-sse/providers/registry/index.js";
@@ -48,19 +49,19 @@ export async function getModelInfo(modelStr, tenantId = null) {
     // Provider-node prefixes are user-defined. They must not override built-in
     // provider ids/aliases such as `cf`, `cloudflare-ai`, `openai`, or `hf`.
     if (!RESERVED_PROVIDER_PREFIXES.has(parsed.providerAlias)) {
-      const openaiNodes = await getProviderNodes({ type: "openai-compatible" });
+      const openaiNodes = await getProviderNodes({ type: "openai-compatible", tenantId });
       const matchedOpenAI = openaiNodes.find((node) => node.prefix === parsed.providerAlias);
       if (matchedOpenAI) {
         return { provider: matchedOpenAI.id, model: parsed.model };
       }
 
-      const anthropicNodes = await getProviderNodes({ type: "anthropic-compatible" });
+      const anthropicNodes = await getProviderNodes({ type: "anthropic-compatible", tenantId });
       const matchedAnthropic = anthropicNodes.find((node) => node.prefix === parsed.providerAlias);
       if (matchedAnthropic) {
         return { provider: matchedAnthropic.id, model: parsed.model };
       }
 
-      const embeddingNodes = await getProviderNodes({ type: "custom-embedding" });
+      const embeddingNodes = await getProviderNodes({ type: "custom-embedding", tenantId });
       const matchedEmbedding = embeddingNodes.find((node) => node.prefix === parsed.providerAlias);
       if (matchedEmbedding) {
         return { provider: matchedEmbedding.id, model: parsed.model };
@@ -76,14 +77,14 @@ export async function getModelInfo(modelStr, tenantId = null) {
   // This prevents combo names from being incorrectly routed to providers
   const combo = tenantId
     ? await getComboByName(parsed.model, tenantId)
-    : await getComboByName(parsed.model);
+    : (isStrict() ? null : await getComboByName(parsed.model));
   if (combo) {
     // Return null provider to signal this should be handled as combo
     // The caller (handleChat) will detect this and handle it as combo
     return { provider: null, model: parsed.model };
   }
 
-  return getModelInfoCore(modelStr, getModelAliases);
+  return getModelInfoCore(modelStr, isStrict() ? async () => ({}) : getModelAliases);   // estrito: aliases globais do operador nao valem para tenant
 }
 
 /**
@@ -98,7 +99,7 @@ export async function getComboModels(modelStr, tenantId = null) {
 
   const combo = tenantId
     ? await getComboByName(modelStr, tenantId)
-    : await getComboByName(modelStr);
+    : (isStrict() ? null : await getComboByName(modelStr));
   if (combo && combo.models && combo.models.length > 0) {
     return combo.models;
   }

@@ -1,12 +1,20 @@
 import { NextResponse } from "next/server";
+import { ownershipGuard } from "@/lib/tenancy.js";
+import { checkOutboundUrl } from "@/lib/urlGuard.js";
 import { deleteProviderConnectionsByProvider, deleteProviderNode, getProviderConnections, getProviderNodeById, updateProviderConnection, updateProviderNode } from "@/models";
 
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "node", id);
+    if (denied) return denied;
     const body = await request.json();
     const { name, prefix, apiType, baseUrl } = body;
+    if (baseUrl) {
+      const bad = checkOutboundUrl(baseUrl);
+      if (bad) return NextResponse.json({ error: bad }, { status: 400 });
+    }
     const node = await getProviderNodeById(id);
 
     if (!node) {
@@ -84,6 +92,8 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "node", id);
+    if (denied) return denied;
     const node = await getProviderNodeById(id);
 
     if (!node) {

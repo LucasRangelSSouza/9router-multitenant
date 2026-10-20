@@ -1,3 +1,4 @@
+import { tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 
@@ -37,6 +38,7 @@ export async function POST(request) {
     const email = user.email || user.public_email || "";
 
     await createProviderConnection({
+      tenantId: tenantIdFromRequest(request),
       provider: "gitlab",
       authType: "oauth",
       accessToken: token.trim(),

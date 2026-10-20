@@ -1,3 +1,4 @@
+import { tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 
@@ -107,6 +108,7 @@ export async function POST(request) {
 
     // Save to database
     const connection = await createProviderConnection({
+      tenantId: tenantIdFromRequest(request),
       provider: "iflow",
       authType: "cookie",
       name: refreshedKey.name || keyData.name,

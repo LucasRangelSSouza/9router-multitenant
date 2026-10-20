@@ -1,3 +1,4 @@
+import { ownershipGuard } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { getProviderConnectionById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
@@ -442,6 +443,8 @@ const PROVIDER_MODELS_CONFIG = {
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "connection", id);
+    if (denied) return denied;
     const connection = await getProviderConnectionById(id);
 
     if (!connection) {

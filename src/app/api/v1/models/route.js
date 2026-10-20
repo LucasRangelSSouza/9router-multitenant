@@ -6,6 +6,24 @@ import {
   isOpenAICompatibleProvider,
 } from "@/shared/constants/providers";
 import { getProviderConnections, getCombos, getCustomModels, getModelAliases } from "@/lib/localDb";
+import { isStrict } from "@/lib/tenancy.js";
+import { resolveRequestTenant } from "@/sse/services/auth.js";
+
+// Sentinela: tenant inexistente. No modo estrito, chave sem tenant lista nada.
+const NO_TENANT = "__no_tenant__";
+// Chave restrita (allowedCombos) so enxerga os proprios combos; tenant suspenso nao lista nada.
+export async function restrictModelsForKey(request, data) {
+  const { keyAuth } = await resolveRequestTenant(request);
+  if (keyAuth?.tenantStatus && keyAuth.tenantStatus !== "active") return [];
+  if (Array.isArray(keyAuth?.allowedCombos)) return data.filter((m) => keyAuth.allowedCombos.includes(m.id));
+  return data;
+}
+
+export async function tenantScopeForModels(request) {
+  const { tenantId } = await resolveRequestTenant(request);
+  if (tenantId) return tenantId;
+  return isStrict() ? NO_TENANT : undefined;
+}
 import { getDisabledModels } from "@/lib/disabledModelsDb";
 import { resolveKiroModels } from "open-sse/services/kiroModels.js";
 import { resolveKimchiModels } from "open-sse/services/kimchiModels.js";
@@ -248,7 +266,7 @@ export async function buildModelsList(kindFilter, options = {}) {
   const skipDynamicFetch = options.skipDynamicFetch === true;
   let connections = [];
   try {
-    connections = await getProviderConnections();
+    connections = await getProviderConnections(options.tenantId !== undefined ? { tenantId: options.tenantId } : {});
     connections = connections.filter(c => c.isActive !== false);
   } catch (e) {
     console.log("Could not fetch providers, returning all models");
@@ -256,21 +274,23 @@ export async function buildModelsList(kindFilter, options = {}) {
 
   let combos = [];
   try {
-    combos = await getCombos();
+    combos = await getCombos(options.tenantId);
   } catch (e) {
     console.log("Could not fetch combos");
   }
 
   let customModels = [];
   try {
-    customModels = await getCustomModels();
+    // estrito + tenant: modelos custom/aliases globais sao do operador, nao entram na lista do tenant
+    const operatorScope = !(isStrict() && options.tenantId);
+    customModels = operatorScope ? await getCustomModels() : [];
   } catch (e) {
     console.log("Could not fetch custom models");
   }
 
   let modelAliases = {};
   try {
-    modelAliases = await getModelAliases();
+    modelAliases = (isStrict() && options.tenantId) ? {} : await getModelAliases();
   } catch (e) {
     console.log("Could not fetch model aliases");
   }
@@ -562,7 +582,12 @@ export async function GET(request) {
   try {
     // Detect cross-instance recursive /models fetch (another 9router fetching our /models)
     const skipDynamicFetch = request?.headers?.get(INTERNAL_MODELS_FETCH_HEADER) === "1";
-    const data = await buildModelsList([LLM_KIND], { skipDynamicFetch });
+    const tenantId = await tenantScopeForModels(request);
+    // estrito + chave sem tenant: lista vazia (nem o catalogo estatico dos provedores)
+    if (tenantId === NO_TENANT) {
+      return Response.json({ object: "list", data: [] }, { headers: { "Access-Control-Allow-Origin": "*" } });
+    }
+    const data = await restrictModelsForKey(request, await buildModelsList([LLM_KIND], { skipDynamicFetch, tenantId }));
     return Response.json({ object: "list", data }, {
       headers: { "Access-Control-Allow-Origin": "*" },
     });

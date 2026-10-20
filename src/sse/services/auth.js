@@ -1,3 +1,4 @@
+import { isStrict } from "@/lib/tenancy.js";
 import { getProviderConnections, validateApiKey, getApiKeyAuth as getApiKeyAuthFromDb, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
@@ -75,6 +76,8 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     // migrated to multi-tenant (onda 2) is byte-for-byte identical to before.
     const connectionsFilter = { provider: providerId, isActive: true };
     if (options?.tenantId) connectionsFilter.tenantId = options.tenantId;
+    // estrito: sem tenant na requisicao nao ha credencial (fail-closed)
+    else if (isStrict()) return null;
     const connections = await getProviderConnections(connectionsFilter);
     log.debug("AUTH", `${provider} | total connections: ${connections.length}, excludeIds: ${excludeSet.size > 0 ? [...excludeSet].join(",") : "none"}, model: ${model || "any"}`);
 
@@ -357,4 +360,14 @@ export async function isValidApiKey(apiKey) {
 export async function getApiKeyAuth(apiKey) {
   if (!apiKey) return null;
   return await getApiKeyAuthFromDb(apiKey);
+}
+
+/**
+ * Tenant da requisicao a partir da chave (nunca de header/query/corpo).
+ * Retorna { apiKey, keyAuth, tenantId } (tenantId null se a chave nao tem dono).
+ */
+export async function resolveRequestTenant(request) {
+  const apiKey = extractApiKey(request);
+  const keyAuth = apiKey ? await getApiKeyAuth(apiKey) : null;
+  return { apiKey, keyAuth, tenantId: keyAuth?.tenantId ?? null };
 }

@@ -1,3 +1,4 @@
+import { gateResponse } from "@/lib/gate.js";
 import {
   getProviderCredentials,
   markAccountUnavailable,
@@ -56,6 +57,7 @@ export async function handleEmbeddings(request) {
   const settings = await getSettings();
   const keyAuth = apiKey ? await getApiKeyAuth(apiKey) : null;
   const tenantId = keyAuth?.tenantId ?? null;
+  { const _gate = await gateResponse(keyAuth, modelStr); if (_gate) return _gate; }
   if (settings.requireApiKey) {
     if (!apiKey) {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");

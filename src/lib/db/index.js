@@ -40,7 +40,7 @@ export {
 
 // Tenants
 export {
-  getTenants, getTenantById, createTenant,
+  getTenants, getTenantById, createTenant, updateTenant, deleteTenantCascade, getTenantUsage, getTenantRequests, getTenantCounts,
 } from "./repos/tenantsRepo.js";
 
 // Aliases (model + custom + mitm)

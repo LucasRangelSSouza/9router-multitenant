@@ -1,3 +1,6 @@
+import { comboStrategiesFor, comboRotationKey } from "@/lib/tenancy.js";
+import { gateResponse } from "@/lib/gate.js";
+import { reqCtx } from "@/lib/requestContext.js";
 import "open-sse/index.js";
 
 import {
@@ -8,6 +11,8 @@ import {
   getApiKeyAuth,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
+import { isStrict } from "@/lib/tenancy.js";
+import { checkTenantRpm } from "@/lib/tenantLimits.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -66,6 +71,8 @@ export async function handleChat(request, clientRawRequest = null) {
   const settings = await getSettings();
   const keyAuth = apiKey ? await getApiKeyAuth(apiKey) : null;
   const tenantId = keyAuth?.tenantId ?? null;
+  { const _gate = await gateResponse(keyAuth, modelStr); if (_gate) return _gate; }
+  reqCtx.enterWith({ tenantId, requestedModel: typeof modelStr === "string" ? modelStr.slice(0, 200) : null });
   if (settings.requireApiKey) {
     if (!apiKey) {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
@@ -75,6 +82,17 @@ export async function handleChat(request, clientRawRequest = null) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
     }
+  }
+
+  if (isStrict() && !tenantId) {
+    log.warn("AUTH", "API key is not bound to a tenant (MT_STRICT=1)");
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "API key is not bound to a tenant");
+  }
+  const rpm = await checkTenantRpm(tenantId);
+  if (!rpm.ok) {
+    const r = errorResponse(HTTP_STATUS.RATE_LIMITED, `Tenant rate limit exceeded (${rpm.limit} requests/min)`);
+    r.headers.set("Retry-After", String(rpm.retryAfterSec));
+    return r;
   }
 
   if (!modelStr) {
@@ -93,7 +111,7 @@ export async function handleChat(request, clientRawRequest = null) {
   const comboModels = await getComboModels(modelStr, tenantId);
   if (comboModels) {
     // Check for combo-specific strategy first, fallback to global
-    const comboStrategies = settings.comboStrategies || {};
+    const comboStrategies = await comboStrategiesFor(settings, tenantId);
     const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
     const comboStrategy = comboSpecificStrategy || settings.comboStrategy || "fallback";
     const augmentedModels = augmentModelsWithCapacityAdapter(comboModels, requiredCapabilities, settings);
@@ -113,7 +131,7 @@ export async function handleChat(request, clientRawRequest = null) {
           return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, tenantId);
         },
         log,
-        comboName: modelStr,
+        comboName: comboRotationKey(tenantId, modelStr),
         judgeModel: comboStrategies[modelStr]?.judgeModel,
         tuning: comboStrategies[modelStr]?.fusionTuning,
       });
@@ -129,7 +147,7 @@ export async function handleChat(request, clientRawRequest = null) {
         adapterAdded
       ),
       log,
-      comboName: modelStr,
+      comboName: comboRotationKey(tenantId, modelStr),
       comboStrategy,
       comboStickyLimit
     });
@@ -149,7 +167,7 @@ export async function handleChat(request, clientRawRequest = null) {
         adapterAdded
       ),
       log,
-      comboName: modelStr,
+      comboName: comboRotationKey(tenantId, modelStr),
       comboStrategy: getActiveAdapterStrategy(requiredCapabilities, settings)
     });
   }
@@ -169,7 +187,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
     if (comboModels) {
       const chatSettings = await getSettings();
       // Check for combo-specific strategy first, fallback to global
-      const comboStrategies = chatSettings.comboStrategies || {};
+      const comboStrategies = await comboStrategiesFor(chatSettings, tenantId);
       const comboSpecificStrategy = comboStrategies[modelStr]?.fallbackStrategy;
       const comboStrategy = comboSpecificStrategy || chatSettings.comboStrategy || "fallback";
       const requiredCapabilities = detectRequiredCapabilities(body);
@@ -190,7 +208,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
             return handleSingleModelChat(b, m, cleanRawReq, request, apiKey, tenantId);
           },
           log,
-          comboName: modelStr,
+          comboName: comboRotationKey(tenantId, modelStr),
           judgeModel: comboStrategies[modelStr]?.judgeModel,
           tuning: comboStrategies[modelStr]?.fusionTuning,
         });
@@ -206,7 +224,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           adapterAdded
         ),
         log,
-        comboName: modelStr,
+        comboName: comboRotationKey(tenantId, modelStr),
         comboStrategy,
         comboStickyLimit
       });
