@@ -8,6 +8,8 @@ import {
   getApiKeyAuth,
 } from "../services/auth.js";
 import { getSettings } from "@/lib/localDb";
+import { isStrict } from "@/lib/tenancy.js";
+import { checkTenantRpm } from "@/lib/tenantLimits.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -75,6 +77,17 @@ export async function handleChat(request, clientRawRequest = null) {
       log.warn("AUTH", "Invalid API key (requireApiKey=true)");
       return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
     }
+  }
+
+  if (isStrict() && !tenantId) {
+    log.warn("AUTH", "API key is not bound to a tenant (MT_STRICT=1)");
+    return errorResponse(HTTP_STATUS.FORBIDDEN, "API key is not bound to a tenant");
+  }
+  const rpm = await checkTenantRpm(tenantId);
+  if (!rpm.ok) {
+    const r = errorResponse(HTTP_STATUS.RATE_LIMITED, `Tenant rate limit exceeded (${rpm.limit} requests/min)`);
+    r.headers.set("Retry-After", String(rpm.retryAfterSec));
+    return r;
   }
 
   if (!modelStr) {

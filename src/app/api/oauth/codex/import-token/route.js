@@ -1,3 +1,4 @@
+import { tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
@@ -69,6 +70,7 @@ export async function POST(request) {
 
     // Save to database as access_token authType (no refresh token)
     const connection = await createProviderConnection({
+      tenantId: tenantIdFromRequest(request),
       provider: "codex",
       authType: "access_token",
       accessToken: token,

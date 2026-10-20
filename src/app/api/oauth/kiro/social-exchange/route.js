@@ -1,3 +1,4 @@
+import { tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
@@ -38,6 +39,7 @@ export async function POST(request) {
 
     // Save to database
     const connection = await createProviderConnection({
+      tenantId: tenantIdFromRequest(request),
       provider: "kiro",
       authType: "oauth",
       accessToken: tokenData.accessToken,

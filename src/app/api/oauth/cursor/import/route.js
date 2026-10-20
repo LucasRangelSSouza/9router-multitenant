@@ -1,3 +1,4 @@
+import { tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { CursorService } from "@/lib/oauth/services/cursor";
 import { createProviderConnection } from "@/models";
@@ -41,6 +42,7 @@ export async function POST(request) {
 
     // Save to database
     const connection = await createProviderConnection({
+      tenantId: tenantIdFromRequest(request),
       provider: "cursor",
       authType: "oauth",
       accessToken: tokenData.accessToken,

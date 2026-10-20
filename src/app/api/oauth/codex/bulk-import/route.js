@@ -1,3 +1,4 @@
+import { tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
@@ -104,6 +105,7 @@ export async function POST(request) {
       if (!item.lastRefreshAt) item.lastRefreshAt = new Date().toISOString();
 
       const created = await createProviderConnection({
+        tenantId: tenantIdFromRequest(request),
         provider: "codex",
         authType: "oauth",
         ...item,

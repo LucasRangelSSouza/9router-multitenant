@@ -13,7 +13,7 @@ export {
   getApiKeys, getApiKeyById, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyAuth,
   getCombos, getComboById, getComboByName,
   createCombo, updateCombo, deleteCombo,
-  getTenants, getTenantById, createTenant,
+  getTenants, getTenantById, createTenant, updateTenant, deleteTenantCascade, getTenantUsage,
   getModelAliases, setModelAlias, deleteModelAlias,
   getCustomModels, addCustomModel, deleteCustomModel,
   getMitmAlias, setMitmAliasAll,

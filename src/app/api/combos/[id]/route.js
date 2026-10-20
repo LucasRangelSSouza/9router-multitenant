@@ -1,3 +1,4 @@
+import { ownershipGuard } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { getComboById, updateCombo, deleteCombo, getComboByName } from "@/lib/localDb";
 import { resetComboRotation } from "open-sse/services/combo.js";
@@ -9,6 +10,8 @@ const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "combo", id);
+    if (denied) return denied;
     const combo = await getComboById(id);
     
     if (!combo) {
@@ -26,6 +29,8 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "combo", id);
+    if (denied) return denied;
     const body = await request.json();
     
     // Validate name format if provided
@@ -64,6 +69,8 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "combo", id);
+    if (denied) return denied;
     const prev = await getComboById(id);
     const success = await deleteCombo(id);
     

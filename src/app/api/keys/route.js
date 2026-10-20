@@ -1,3 +1,4 @@
+import { isStrict, tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { getApiKeys, createApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
@@ -19,7 +20,11 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name, tenantId } = body;
+    const { name } = body;
+    const tenantId = tenantIdFromRequest(request, body);
+    if (isStrict() && !tenantId) {
+      return NextResponse.json({ error: "tenantId is required (MT_STRICT=1)" }, { status: 400 });
+    }
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });

@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { requireTenantOrThrow } from "../../tenancy.js";
 
 function rowToKey(row) {
   if (!row) return null;
@@ -31,6 +32,7 @@ export async function getApiKeyById(id) {
 // (onda 2) keep working — a null tenantId means "legacy/global key", same
 // semantics as a pre-multi-tenant row.
 export async function createApiKey(name, machineId, tenantId = null) {
+  requireTenantOrThrow(tenantId, "api key");
   if (!machineId) throw new Error("machineId is required");
   const db = await getAdapter();
   const { generateApiKeyWithMachine } = await import("@/shared/utils/apiKey");

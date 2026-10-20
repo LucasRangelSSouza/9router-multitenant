@@ -1,3 +1,4 @@
+import { ownershipGuard } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { deleteApiKey, getApiKeyById, updateApiKey } from "@/lib/localDb";
 
@@ -5,6 +6,8 @@ import { deleteApiKey, getApiKeyById, updateApiKey } from "@/lib/localDb";
 export async function GET(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "key", id);
+    if (denied) return denied;
     const key = await getApiKeyById(id);
     if (!key) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
@@ -20,6 +23,8 @@ export async function GET(request, { params }) {
 export async function PUT(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "key", id);
+    if (denied) return denied;
     const body = await request.json();
     const { isActive } = body;
 
@@ -44,6 +49,8 @@ export async function PUT(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     const { id } = await params;
+    const denied = await ownershipGuard(request, "key", id);
+    if (denied) return denied;
 
     const deleted = await deleteApiKey(id);
     if (!deleted) {

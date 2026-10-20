@@ -1,3 +1,4 @@
+import { isStrict, tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { getCombos, createCombo, getComboByName } from "@/lib/localDb";
 
@@ -23,7 +24,11 @@ export async function GET(request) {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name, models, kind, tenantId } = body;
+    const { name, models, kind } = body;
+    const tenantId = tenantIdFromRequest(request, body);
+    if (isStrict() && !tenantId) {
+      return NextResponse.json({ error: "tenantId is required (MT_STRICT=1)" }, { status: 400 });
+    }
 
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });

@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
+import { isStrict, requireTenantOrThrow } from "../../tenancy.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 
 const OPTIONAL_FIELDS = [
@@ -80,7 +81,11 @@ export async function getProviderConnections(filter = {}) {
   const params = [];
   if (filter.provider) { where.push("provider = ?"); params.push(filter.provider); }
   if (filter.isActive !== undefined) { where.push("isActive = ?"); params.push(filter.isActive ? 1 : 0); }
-  if (filter.tenantId !== undefined) { where.push("(tenantId = ? OR tenantId IS NULL)"); params.push(filter.tenantId); }
+  if (filter.tenantId !== undefined) {
+    // estrito: so as do tenant (NULL = sem dono nunca vaza); padrao: legado visivel
+    where.push(isStrict() ? "tenantId = ?" : "(tenantId = ? OR tenantId IS NULL)");
+    params.push(filter.tenantId);
+  }
   const sql = `SELECT * FROM providerConnections${where.length ? ` WHERE ${where.join(" AND ")}` : ""}`;
   const rows = db.all(sql, params);
   const list = rows.map(rowToConn);
@@ -108,6 +113,7 @@ function reorderInTx(db, providerId) {
 }
 
 export async function createProviderConnection(data) {
+  requireTenantOrThrow(data.tenantId, "provider connection");
   const db = await getAdapter();
   const now = new Date().toISOString();
   let result;
