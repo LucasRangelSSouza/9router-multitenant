@@ -247,7 +247,7 @@ rec(f"07.carga {N}x{PER}={N * PER} simultaneas", ok,
     f"erros={len(errs)} cruzamentos={len(cross)} mock_recebeu={per_mock} pico_em_voo={[p.get('peak') for p in peaks]} total={wall:.1f}s rps={N * PER / wall:.0f} p95={p95:.1f}s")
 
 # ---------------- 8. varredura de logs e segredos ----------------
-logs = subprocess.run(["docker", "logs", GW_CONTAINER], capture_output=True, text=True, timeout=120)
+logs = subprocess.run(["docker", "logs", GW_CONTAINER], capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
 text = logs.stdout + logs.stderr
 leaks = [k for k in list(UP.values()) + list(FREE.values()) + list(RES.values()) if k in text]
 rec("08.varredura de logs do gateway: nenhuma chave de provedor nem chave de tenant em claro", not leaks, f"achados={len(leaks)} de {len(UP) + len(FREE) + len(RES)} segredos; linhas={len(text.splitlines())}")
