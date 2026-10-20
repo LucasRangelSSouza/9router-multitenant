@@ -202,7 +202,7 @@ async function isAuthenticated(request) {
 // ---- Token de servico (BFF/motor) -------------------------------------------
 // O token de servico NAO e um admin global: so alcanca (a) provisionamento de
 // tenants e (b) a API de gerenciamento da lista abaixo, SEMPRE com x-tenant-id
-// de um tenant existente. Qualquer outra rota /api/* (settings, proxy-pools,
+// da Account. Somente a criacao inicial aceita um id ainda inexistente. Qualquer outra rota /api/* (settings, proxy-pools,
 // cli-tools, usage global, models/*, ...) e do operador (cookie) e responde 403.
 const TENANT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
 const SERVICE_TENANT_PATHS = [
@@ -213,18 +213,26 @@ const SERVICE_TENANT_PATHS = [
   /^\/api\/oauth\/(?!.*(start-proxy|stop-proxy|poll-status|register-session|ide-status|auto-import)).+/,
   /^\/api\/usage\/(?!chart$|history$|logs$|providers$|request-details$|request-logs$|stats$|stream$)[^/]+$/,
 ];
-const SERVICE_PROVISION_PATHS = [/^\/api\/tenants$/, /^\/api\/tenants\/[^/]+$/];
+const SERVICE_TENANTS_COLLECTION = "/api/tenants";
+const SERVICE_TENANT_RESOURCE = /^\/api\/tenants\/([^/]+)$/;
 const SERVICE_TENANT_SELF = /^\/api\/tenants\/([^/]+)\/(usage|requests|summary)$/;
 
 async function serviceTokenGate(request, pathname) {
   const deny = (status, error) => NextResponse.json({ error }, { status });
   const header = request.headers.get("x-tenant-id");
   const self = SERVICE_TENANT_SELF.exec(pathname);
-  if (SERVICE_PROVISION_PATHS.some((re) => re.test(pathname))) {
-    if (header) {
-      const id = pathname.split("/")[3];
-      if (id && header !== id) return deny(403, "x-tenant-id does not match tenant in path");
-    }
+  // A chave de servico nao pode enumerar tenants. Ela so cria o tenant da
+  // Account atual, informando o id dela no cabecalho e no corpo da requisicao.
+  if (pathname === SERVICE_TENANTS_COLLECTION) {
+    if (request.method !== "POST") return deny(403, "Route not available to the service token");
+    if (!header || !TENANT_ID_RE.test(header)) return deny(400, "x-tenant-id header is required");
+    return null;
+  }
+  const resource = SERVICE_TENANT_RESOURCE.exec(pathname);
+  if (resource) {
+    if (!header || !TENANT_ID_RE.test(header)) return deny(400, "x-tenant-id header is required");
+    if (resource[1] !== header) return deny(403, "x-tenant-id does not match tenant in path");
+    if (!(await getTenantById(header))) return deny(404, "Tenant not found");
     return null;
   }
   const scoped = self || SERVICE_TENANT_PATHS.some((re) => re.test(pathname));

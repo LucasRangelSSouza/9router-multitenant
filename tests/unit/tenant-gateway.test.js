@@ -213,8 +213,36 @@ describe("token de servico (serviceTokenGate)", () => {
     expect(await gate("GET", "/api/providers", { "x-tenant-id": "x" })).toBe(400);
     expect(await gate("GET", `/api/tenants/${a.id}/usage`, { "x-tenant-id": "outro-tenant-0001" })).toBe(403);
     expect(await gate("GET", "/api/providers?tenantId=outro-tenant-0001", H)).toBe(400);
-    expect(await gate("POST", "/api/tenants", {})).toBeNull();
-    expect(await gate("DELETE", `/api/tenants/${a.id}`, {})).toBeNull();
+    expect(await gate("GET", "/api/tenants", H)).toBe(403);
+    expect(await gate("POST", "/api/tenants", {})).toBe(400);
+    expect(await gate("POST", "/api/tenants", H)).toBeNull();
+    expect(await gate("DELETE", `/api/tenants/${a.id}`, {})).toBe(400);
+    expect(await gate("DELETE", `/api/tenants/${a.id}`, H)).toBeNull();
     expect(await gate("DELETE", `/api/tenants/${a.id}`, { "x-tenant-id": "outro-tenant-0001" })).toBe(403);
+  });
+});
+
+describe("provisionamento do BFF", () => {
+  it("nao permite criar tenant com id diferente do escopo informado", async () => {
+    const x = await ctx();
+    const { POST } = await import("@/app/api/tenants/route.js");
+    const ownId = "account_12345678";
+    const otherId = "account_87654321";
+    const mismatched = new Request("http://gw.local/api/tenants", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-tenant-id": ownId },
+      body: JSON.stringify({ id: otherId, name: "Outra conta" }),
+    });
+    expect((await POST(mismatched)).status).toBe(403);
+
+    const allowed = new Request("http://gw.local/api/tenants", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-tenant-id": ownId },
+      body: JSON.stringify({ id: ownId, name: "Conta atual" }),
+    });
+    const response = await POST(allowed);
+    expect(response.status).toBe(201);
+    expect((await response.json()).tenant.id).toBe(ownId);
+    expect(await x.getTenantById(otherId)).toBeNull();
   });
 });
