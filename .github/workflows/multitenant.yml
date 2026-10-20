@@ -1,0 +1,35 @@
+name: multitenant
+on:
+  pull_request:
+  push:
+    branches: [main, "feat/**", "g/**"]
+
+jobs:
+  isolamento:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm install --no-audit --no-fund
+        working-directory: tests
+      # testes de isolamento multi-tenant (estrito, allow-list, nos por tenant, uso, SSRF, token de servico)
+      - run: npx vitest run multi-tenant-strict.test.js tenant-gateway.test.js multi-tenant-isolation.test.js --reporter=verbose
+        working-directory: tests
+        env:
+          NODE_ENV: test
+  e2e-adversarial:
+    runs-on: ubuntu-latest
+    needs: isolamento
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install httpx aiohttp uvloop
+      - name: build da imagem
+        run: docker build -t gw-ci .
+      - name: e2e adversarial (2 e 5 tenants + 1000 simultaneas, modelo falso)
+        run: bash e2e/run_ci.sh gw-ci

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSettings, validateApiKey } from "@/lib/localDb";
+import { getSettings, validateApiKey, getTenantById } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
 import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
@@ -199,6 +199,45 @@ async function isAuthenticated(request) {
   return false;
 }
 
+// ---- Token de servico (BFF/motor) -------------------------------------------
+// O token de servico NAO e um admin global: so alcanca (a) provisionamento de
+// tenants e (b) a API de gerenciamento da lista abaixo, SEMPRE com x-tenant-id
+// de um tenant existente. Qualquer outra rota /api/* (settings, proxy-pools,
+// cli-tools, usage global, models/*, ...) e do operador (cookie) e responde 403.
+const TENANT_ID_RE = /^[A-Za-z0-9_-]{8,64}$/;
+const SERVICE_TENANT_PATHS = [
+  /^\/api\/providers$/, /^\/api\/providers\/validate$/,
+  /^\/api\/providers\/(?!client$|test-batch$|suggested-models$)[^/]+$/, /^\/api\/providers\/[^/]+\/(test|models)$/,
+  /^\/api\/combos(\/[^/]+)?$/, /^\/api\/keys(\/[^/]+)?$/,
+  /^\/api\/provider-nodes(\/validate|\/[^/]+)?$/,
+  /^\/api\/oauth\/(?!.*(start-proxy|stop-proxy|poll-status|register-session|ide-status|auto-import)).+/,
+  /^\/api\/usage\/(?!chart$|history$|logs$|providers$|request-details$|request-logs$|stats$|stream$)[^/]+$/,
+];
+const SERVICE_PROVISION_PATHS = [/^\/api\/tenants$/, /^\/api\/tenants\/[^/]+$/];
+const SERVICE_TENANT_SELF = /^\/api\/tenants\/([^/]+)\/(usage|requests|summary)$/;
+
+async function serviceTokenGate(request, pathname) {
+  const deny = (status, error) => NextResponse.json({ error }, { status });
+  const header = request.headers.get("x-tenant-id");
+  const self = SERVICE_TENANT_SELF.exec(pathname);
+  if (SERVICE_PROVISION_PATHS.some((re) => re.test(pathname))) {
+    if (header) {
+      const id = pathname.split("/")[3];
+      if (id && header !== id) return deny(403, "x-tenant-id does not match tenant in path");
+    }
+    return null;
+  }
+  const scoped = self || SERVICE_TENANT_PATHS.some((re) => re.test(pathname));
+  if (!scoped) return deny(403, "Route not available to the service token");
+  if (!header || !TENANT_ID_RE.test(header)) return deny(400, "x-tenant-id header is required");
+  if (self && self[1] !== header) return deny(403, "x-tenant-id does not match tenant in path");
+  const q = new URL(request.url).searchParams.get("tenantId");
+  if (q && q !== header) return deny(400, "tenantId query conflicts with x-tenant-id");
+  const tenant = await getTenantById(header);
+  if (!tenant) return deny(404, "Tenant not found");
+  return null;
+}
+
 function isPublicApi(pathname) {
   if (isPublicLlmApi(pathname)) return true;
   return PUBLIC_API_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -210,6 +249,7 @@ export const __test__ = {
   extractApiKey,
   canAccessPublicLlmApi,
   canAccessLocalOnlyRoute,
+  serviceTokenGate,
 };
 
 export async function proxy(request) {
@@ -237,6 +277,11 @@ export async function proxy(request) {
   // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
   if (pathname.startsWith("/api/")) {
     if (isPublicApi(pathname)) return NextResponse.next();
+    // token de servico sem cookie de operador: escopo restrito (ver serviceTokenGate)
+    if (hasValidAdminToken(request) && !(await hasValidToken(request))) {
+      const denied = await serviceTokenGate(request, pathname);
+      return denied || NextResponse.next();
+    }
     if (await hasValidCliToken(request) || await isAuthenticated(request))
       return NextResponse.next();
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

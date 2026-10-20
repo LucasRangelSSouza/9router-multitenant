@@ -1,4 +1,5 @@
 import { ownershipGuard } from "@/lib/tenancy.js";
+import { checkOutboundUrl, checkProviderSpecificData } from "@/lib/urlGuard.js";
 import { NextResponse } from "next/server";
 import {
   getProviderConnectionById,
@@ -114,6 +115,16 @@ export async function PUT(request, { params }) {
     const proxyConfig = normalizeProxyConfig(body);
     if (proxyConfig.error) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
+    }
+
+    if (request.headers.get("x-tenant-id")) {
+      // chamada do BFF/tenant: URLs anti-SSRF e sem proxy pool do operador
+      const bad = checkProviderSpecificData(existing.provider, providerSpecificData)
+        || (proxyConfig.connectionProxyUrl ? checkOutboundUrl(proxyConfig.connectionProxyUrl) : null);
+      if (bad) return NextResponse.json({ error: bad }, { status: 400 });
+      if (body.proxyPoolId && body.proxyPoolId !== "__none__") {
+        return NextResponse.json({ error: "proxyPoolId is not available for tenant connections" }, { status: 400 });
+      }
     }
 
     const proxyPoolResult = await normalizeProxyPoolUpdate(body.proxyPoolId);

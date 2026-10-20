@@ -1,3 +1,5 @@
+import { comboStrategiesFor, comboRotationKey } from "@/lib/tenancy.js";
+import { gateResponse } from "@/lib/gate.js";
 import {
   getProviderCredentials,
   markAccountUnavailable,
@@ -52,6 +54,7 @@ export async function handleFetch(request) {
   const settings = await getSettings();
   const keyAuth = apiKey ? await getApiKeyAuth(apiKey) : null;
   const tenantId = keyAuth?.tenantId ?? null;
+  { const _gate = await gateResponse(keyAuth, providerInput); if (_gate) return _gate; }
   if (settings.requireApiKey) {
     if (!apiKey) {
       log.warn("AUTH", "Missing API key (requireApiKey=true)");
@@ -94,7 +97,7 @@ export async function handleFetch(request) {
   const combos = tenantId ? await getCombos(tenantId) : await getCombos();
   const comboModels = getComboModelsFromData(providerInput, combos);
   if (comboModels) {
-    const comboStrategies = settings.comboStrategies || {};
+    const comboStrategies = await comboStrategiesFor(settings, tenantId);
     const comboStrategy = comboStrategies[providerInput]?.fallbackStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("FETCH", `Combo "${providerInput}" with ${comboModels.length} providers (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
@@ -103,7 +106,7 @@ export async function handleFetch(request) {
       models: comboModels,
       handleSingleModel: (b, m) => handleSingleProviderFetch(b, m, request, apiKey, settings, tenantId),
       log,
-      comboName: providerInput,
+      comboName: comboRotationKey(tenantId, providerInput),
       comboStrategy,
       comboStickyLimit
     });

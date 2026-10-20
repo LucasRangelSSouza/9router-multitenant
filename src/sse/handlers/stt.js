@@ -1,3 +1,4 @@
+import { gateResponse } from "@/lib/gate.js";
 import {
   extractApiKey, getApiKeyAuth,
   getProviderCredentials, markAccountUnavailable,
@@ -32,6 +33,7 @@ export async function handleStt(request) {
   const apiKey = extractApiKey(request);
   const keyAuth = apiKey ? await getApiKeyAuth(apiKey) : null;
   const tenantId = keyAuth?.tenantId ?? null;
+  { const _gate = await gateResponse(keyAuth, modelStr); if (_gate) return _gate; }
   if (settings.requireApiKey) {
     if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     if (!keyAuth || !keyAuth.isActive) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");

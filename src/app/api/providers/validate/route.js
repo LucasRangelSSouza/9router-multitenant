@@ -1,3 +1,4 @@
+import { checkProviderSpecificData } from "@/lib/urlGuard.js";
 import { NextResponse } from "next/server";
 import { getProviderNodeById } from "@/models";
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider, isCustomEmbeddingProvider, AI_PROVIDERS } from "@/shared/constants/providers";
@@ -87,6 +88,10 @@ export async function POST(request) {
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
     const { apiKey, providerSpecificData } = body;
+    if (request.headers.get("x-tenant-id")) {
+      const bad = checkProviderSpecificData(provider, providerSpecificData);
+      if (bad) return NextResponse.json({ error: bad }, { status: 400 });
+    }
 
     const isNoAuth = AI_PROVIDERS[provider]?.noAuth === true;
     if (!provider || (!apiKey && provider !== "ollama-local" && !isNoAuth)) {

@@ -81,7 +81,7 @@ describe("multi-tenant estrito", () => {
       await x.createCombo({ name: "main", models: [], tenantId: t.id });
     }
     const counts = await x.deleteTenantCascade(a.id);
-    expect(counts).toEqual({ keys: 1, connections: 1, combos: 1, tenant: 1 });
+    expect(counts).toEqual({ usage: 0, keys: 1, connections: 1, combos: 1, nodes: 0, tenant: 1 });
     expect(await x.getProviderConnections({ tenantId: b.id })).toHaveLength(1);
     expect(await x.getCombos(b.id)).toHaveLength(1);
     expect(await x.getTenantById(a.id)).toBeNull();

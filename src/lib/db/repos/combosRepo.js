@@ -10,6 +10,7 @@ function rowToCombo(row) {
     name: row.name,
     kind: row.kind,
     models: parseJson(row.models, []),
+    strategy: parseJson(row.strategy, null),
     tenantId: row.tenantId ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -66,13 +67,14 @@ export async function createCombo(data) {
     name: data.name,
     kind: data.kind || null,
     models: data.models || [],
+    strategy: data.strategy || null,
     tenantId: data.tenantId || null,
     createdAt: now,
     updatedAt: now,
   };
   db.run(
-    `INSERT INTO combos(id, name, kind, models, tenantId, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
-    [combo.id, combo.name, combo.kind, stringifyJson(combo.models), combo.tenantId, combo.createdAt, combo.updatedAt]
+    `INSERT INTO combos(id, name, kind, models, strategy, tenantId, createdAt, updatedAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+    [combo.id, combo.name, combo.kind, stringifyJson(combo.models), combo.strategy ? stringifyJson(combo.strategy) : null, combo.tenantId, combo.createdAt, combo.updatedAt]
   );
   return combo;
 }
@@ -85,8 +87,8 @@ export async function updateCombo(id, data) {
     if (!row) return;
     const merged = { ...rowToCombo(row), ...data, updatedAt: new Date().toISOString() };
     db.run(
-      `UPDATE combos SET name = ?, kind = ?, models = ?, tenantId = ?, updatedAt = ? WHERE id = ?`,
-      [merged.name, merged.kind, stringifyJson(merged.models || []), merged.tenantId ?? null, merged.updatedAt, id]
+      `UPDATE combos SET name = ?, kind = ?, models = ?, strategy = ?, tenantId = ?, updatedAt = ? WHERE id = ?`,
+      [merged.name, merged.kind, stringifyJson(merged.models || []), merged.strategy ? stringifyJson(merged.strategy) : null, merged.tenantId ?? null, merged.updatedAt, id]
     );
     result = merged;
   });

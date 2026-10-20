@@ -1,3 +1,4 @@
+import { gateDecision } from "@/lib/gate.js";
 import { handleChat } from "@/sse/handlers/chat.js";
 import {
   clearAccountError,
@@ -184,6 +185,7 @@ async function validateGeminiNativeClientKey(request) {
   const apiKey = extractGeminiClientApiKey(request);
   const keyAuth = apiKey ? await getApiKeyAuth(apiKey) : null;
   const tenantId = keyAuth?.tenantId ?? null;
+  { const d = gateDecision(keyAuth, null, { requireModel: false }); if (d) return { error: Response.json({ error: { message: d.message } }, { status: d.status }) }; }
 
   if (!settings.requireApiKey) return { tenantId };
 

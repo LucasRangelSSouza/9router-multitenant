@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { isStrict, tenantIdFromRequest } from "@/lib/tenancy.js";
+import { checkOutboundUrl } from "@/lib/urlGuard.js";
 import { createProviderNode, getProviderNodes } from "@/models";
 import { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX, CUSTOM_EMBEDDING_PREFIX } from "@/shared/constants/providers";
 import { generateId } from "@/shared/utils";
@@ -18,9 +20,10 @@ const CUSTOM_EMBEDDING_DEFAULTS = {
 };
 
 // GET /api/provider-nodes - List all provider nodes
-export async function GET() {
+export async function GET(request) {
   try {
-    const nodes = await getProviderNodes();
+    const tenantId = tenantIdFromRequest(request);
+    const nodes = await getProviderNodes(tenantId ? { tenantId } : {});
     return NextResponse.json({ nodes });
   } catch (error) {
     console.log("Error fetching provider nodes:", error);
@@ -33,6 +36,19 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { name, prefix, apiType, baseUrl, type } = body;
+    const tenantId = tenantIdFromRequest(request, body);
+    if (isStrict() && !tenantId) {
+      return NextResponse.json({ error: "tenantId is required (MT_STRICT=1)" }, { status: 400 });
+    }
+    if (baseUrl) {
+      const bad = checkOutboundUrl(baseUrl);
+      if (bad) return NextResponse.json({ error: bad }, { status: 400 });
+    }
+    // prefixo unico dentro do tenant (dois tenants podem usar o mesmo prefixo)
+    const siblings = await getProviderNodes(tenantId ? { tenantId } : {});
+    if (prefix && siblings.some((n) => n.prefix === String(prefix).trim())) {
+      return NextResponse.json({ error: "Prefix already exists" }, { status: 409 });
+    }
 
     if (!name?.trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
@@ -57,6 +73,7 @@ export async function POST(request) {
         apiType,
         baseUrl: (baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl).trim(),
         name: name.trim(),
+        tenantId: tenantId || null,
       });
       return NextResponse.json({ node }, { status: 201 });
     }
@@ -74,6 +91,7 @@ export async function POST(request) {
         prefix: prefix.trim(),
         baseUrl: sanitizedBaseUrl,
         name: name.trim(),
+        tenantId: tenantId || null,
       });
       return NextResponse.json({ node }, { status: 201 });
     }
@@ -92,6 +110,7 @@ export async function POST(request) {
         prefix: prefix.trim(),
         baseUrl: sanitizedBaseUrl,
         name: name.trim(),
+        tenantId: tenantId || null,
       });
       return NextResponse.json({ node }, { status: 201 });
     }
