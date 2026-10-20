@@ -11,6 +11,14 @@ import { resolveRequestTenant } from "@/sse/services/auth.js";
 
 // Sentinela: tenant inexistente. No modo estrito, chave sem tenant lista nada.
 const NO_TENANT = "__no_tenant__";
+// Chave restrita (allowedCombos) so enxerga os proprios combos; tenant suspenso nao lista nada.
+export async function restrictModelsForKey(request, data) {
+  const { keyAuth } = await resolveRequestTenant(request);
+  if (keyAuth?.tenantStatus && keyAuth.tenantStatus !== "active") return [];
+  if (Array.isArray(keyAuth?.allowedCombos)) return data.filter((m) => keyAuth.allowedCombos.includes(m.id));
+  return data;
+}
+
 export async function tenantScopeForModels(request) {
   const { tenantId } = await resolveRequestTenant(request);
   if (tenantId) return tenantId;
@@ -273,14 +281,16 @@ export async function buildModelsList(kindFilter, options = {}) {
 
   let customModels = [];
   try {
-    customModels = await getCustomModels();
+    // estrito + tenant: modelos custom/aliases globais sao do operador, nao entram na lista do tenant
+    const operatorScope = !(isStrict() && options.tenantId);
+    customModels = operatorScope ? await getCustomModels() : [];
   } catch (e) {
     console.log("Could not fetch custom models");
   }
 
   let modelAliases = {};
   try {
-    modelAliases = await getModelAliases();
+    modelAliases = (isStrict() && options.tenantId) ? {} : await getModelAliases();
   } catch (e) {
     console.log("Could not fetch model aliases");
   }
@@ -577,7 +587,7 @@ export async function GET(request) {
     if (tenantId === NO_TENANT) {
       return Response.json({ object: "list", data: [] }, { headers: { "Access-Control-Allow-Origin": "*" } });
     }
-    const data = await buildModelsList([LLM_KIND], { skipDynamicFetch, tenantId });
+    const data = await restrictModelsForKey(request, await buildModelsList([LLM_KIND], { skipDynamicFetch, tenantId }));
     return Response.json({ object: "list", data }, {
       headers: { "Access-Control-Allow-Origin": "*" },
     });

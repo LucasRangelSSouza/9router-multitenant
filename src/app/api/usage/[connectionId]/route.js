@@ -1,3 +1,4 @@
+import { ownershipGuard } from "@/lib/tenancy.js";
 // Ensure proxyFetch is loaded to patch globalThis.fetch
 import "open-sse/index.js";
 
@@ -123,6 +124,8 @@ export async function GET(request, { params }) {
   let connection;
   try {
     const { connectionId } = await params;
+    const denied = await ownershipGuard(request, "connection", connectionId);
+    if (denied) return denied;
     const force = new URL(request.url).searchParams.get("force") === "1";
 
 

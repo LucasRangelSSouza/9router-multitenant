@@ -1,4 +1,5 @@
 import { isStrict, tenantIdFromRequest } from "@/lib/tenancy.js";
+import { checkOutboundUrl, checkProviderSpecificData } from "@/lib/urlGuard.js";
 import { NextResponse } from "next/server";
 import {
   getProviderConnections,
@@ -50,14 +51,13 @@ async function normalizeProxyPoolId(proxyPoolId) {
 // GET /api/providers - List all connections (optionally scoped to ?tenantId=)
 export async function GET(request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const tenantId = searchParams.get("tenantId");
+    const tenantId = tenantIdFromRequest(request);
     const connections = await getProviderConnections(tenantId ? { tenantId } : {});
 
     // Build nodeNameMap for compatible providers (id → name)
     let nodeNameMap = {};
     try {
-      const nodes = await getProviderNodes();
+      const nodes = await getProviderNodes(tenantId ? { tenantId } : {});
       for (const node of nodes) {
         if (node.id && node.name) nodeNameMap[node.id] = node.name;
       }
@@ -98,6 +98,18 @@ export async function POST(request) {
     }
 
     const proxyConfig = normalizeProxyConfig(body);
+    if (!proxyConfig.error && proxyConfig.connectionProxyUrl) {
+      const bad = checkOutboundUrl(proxyConfig.connectionProxyUrl);
+      if (bad) proxyConfig.error = bad;
+    }
+    if (tenantId && !proxyConfig.error) {
+      const bad = checkProviderSpecificData(provider, body.providerSpecificData);
+      if (bad) proxyConfig.error = bad;
+    }
+    // proxy pools sao globais do operador: o tenant nao referencia pool algum
+    if (tenantId && body.proxyPoolId && body.proxyPoolId !== "__none__") {
+      return NextResponse.json({ error: "proxyPoolId is not available for tenant connections" }, { status: 400 });
+    }
     if (proxyConfig.error) {
       return NextResponse.json({ error: proxyConfig.error }, { status: 400 });
     }
@@ -138,7 +150,7 @@ export async function POST(request) {
     // rotates/fails over via getProviderCredentials. Embedding nodes stay single-connection.
     if (isOpenAICompatibleProvider(provider)) {
       const node = await getProviderNodeById(provider);
-      if (!node) {
+      if (!node || (tenantId && (node.tenantId ?? null) !== tenantId && (isStrict() || node.tenantId))) {
         return NextResponse.json({ error: "OpenAI Compatible node not found" }, { status: 404 });
       }
       providerSpecificData = {
@@ -149,7 +161,7 @@ export async function POST(request) {
       };
     } else if (isAnthropicCompatibleProvider(provider)) {
       const node = await getProviderNodeById(provider);
-      if (!node) {
+      if (!node || (tenantId && (node.tenantId ?? null) !== tenantId && (isStrict() || node.tenantId))) {
         return NextResponse.json({ error: "Anthropic Compatible node not found" }, { status: 404 });
       }
       providerSpecificData = {
@@ -159,7 +171,7 @@ export async function POST(request) {
       };
     } else if (isCustomEmbeddingProvider(provider)) {
       const node = await getProviderNodeById(provider);
-      if (!node) {
+      if (!node || (tenantId && (node.tenantId ?? null) !== tenantId && (isStrict() || node.tenantId))) {
         return NextResponse.json({ error: "Custom Embedding node not found" }, { status: 404 });
       }
       providerSpecificData = {

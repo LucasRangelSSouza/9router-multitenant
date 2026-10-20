@@ -1,3 +1,4 @@
+import { checkOutboundUrl } from "@/lib/urlGuard.js";
 import { NextResponse } from "next/server";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
 import { isLocalRequest } from "@/dashboardGuard";
@@ -56,6 +57,10 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { baseUrl, apiKey, type, modelId } = body;
+    if (baseUrl) {
+      const bad = checkOutboundUrl(baseUrl);
+      if (bad) return NextResponse.json({ error: bad }, { status: 400 });
+    }
 
     if (!baseUrl || !apiKey) {
       return NextResponse.json({ error: "Base URL and API key required" }, { status: 400 });

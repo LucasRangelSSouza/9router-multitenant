@@ -11,9 +11,20 @@ function rowToKey(row) {
     machineId: row.machineId,
     isActive: row.isActive === 1 || row.isActive === true,
     tenantId: row.tenantId ?? null,
+    allowedCombos: parseAllowed(row.allowedCombos),
     createdAt: row.createdAt,
   };
 }
+
+// null = chave livre; array = restrita aos combos listados.
+function parseAllowed(v) {
+  if (v === null || v === undefined || v === "") return null;
+  try {
+    const a = JSON.parse(v);
+    return Array.isArray(a) ? a.filter((x) => typeof x === "string") : null;
+  } catch { return []; }   // valor corrompido: fail-closed (restrita a nada)
+}
+function serializeAllowed(a) { return Array.isArray(a) ? JSON.stringify(a) : null; }
 
 export async function getApiKeys() {
   const db = await getAdapter();
@@ -31,7 +42,7 @@ export async function getApiKeyById(id) {
 // (defaults to null) only so existing callers that haven't been migrated yet
 // (onda 2) keep working — a null tenantId means "legacy/global key", same
 // semantics as a pre-multi-tenant row.
-export async function createApiKey(name, machineId, tenantId = null) {
+export async function createApiKey(name, machineId, tenantId = null, opts = {}) {
   requireTenantOrThrow(tenantId, "api key");
   if (!machineId) throw new Error("machineId is required");
   const db = await getAdapter();
@@ -44,11 +55,12 @@ export async function createApiKey(name, machineId, tenantId = null) {
     machineId,
     isActive: true,
     tenantId: tenantId || null,
+    allowedCombos: Array.isArray(opts.allowedCombos) ? opts.allowedCombos : null,
     createdAt: new Date().toISOString(),
   };
   db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, tenantId, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.tenantId, apiKey.createdAt]
+    `INSERT INTO apiKeys(id, key, name, machineId, isActive, tenantId, allowedCombos, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.tenantId, serializeAllowed(apiKey.allowedCombos), apiKey.createdAt]
   );
   return apiKey;
 }
@@ -61,8 +73,8 @@ export async function updateApiKey(id, data) {
     if (!row) return;
     const merged = { ...rowToKey(row), ...data };
     db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, tenantId = ? WHERE id = ?`,
-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, merged.tenantId ?? null, id]
+      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, tenantId = ?, allowedCombos = ? WHERE id = ?`,
+      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, merged.tenantId ?? null, serializeAllowed(merged.allowedCombos), id]
     );
     result = merged;
   });
@@ -79,11 +91,15 @@ export async function deleteApiKey(id) {
 // tenantId is null for legacy/global keys that predate multi-tenant support.
 export async function getApiKeyAuth(key) {
   const db = await getAdapter();
-  const row = db.get(`SELECT isActive, tenantId FROM apiKeys WHERE key = ?`, [key]);
+  const row = db.get(
+    `SELECT ak.isActive AS isActive, ak.tenantId AS tenantId, ak.allowedCombos AS allowedCombos, t.status AS tenantStatus
+       FROM apiKeys ak LEFT JOIN tenants t ON t.id = ak.tenantId WHERE ak.key = ?`, [key]);
   if (!row) return null;
   return {
     isActive: row.isActive === 1 || row.isActive === true,
     tenantId: row.tenantId ?? null,
+    tenantStatus: row.tenantId ? (row.tenantStatus || "active") : null,
+    allowedCombos: parseAllowed(row.allowedCombos),
   };
 }
 

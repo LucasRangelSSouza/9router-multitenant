@@ -1,4 +1,5 @@
-import { ownershipGuard } from "@/lib/tenancy.js";
+import { ownershipGuard, comboRotationKey } from "@/lib/tenancy.js";
+import { validateComboModels, validateComboStrategy } from "@/lib/keyScope.js";
 import { NextResponse } from "next/server";
 import { getComboById, updateCombo, deleteCombo, getComboByName } from "@/lib/localDb";
 import { resetComboRotation } from "open-sse/services/combo.js";
@@ -32,7 +33,20 @@ export async function PUT(request, { params }) {
     const denied = await ownershipGuard(request, "combo", id);
     if (denied) return denied;
     const body = await request.json();
-    
+    const current = await getComboById(id);
+    if (!current) return NextResponse.json({ error: "Combo not found" }, { status: 404 });
+    // dono e id nunca mudam por update (impede mover combo para outro tenant)
+    delete body.tenantId; delete body.id; delete body.createdAt;
+    if (body.models !== undefined) {
+      const vm = await validateComboModels(current.tenantId, body.models, body.name || current.name);
+      if (vm.error) return NextResponse.json({ error: vm.error }, { status: 400 });
+    }
+    if (body.strategy !== undefined) {
+      const vs = validateComboStrategy(body.strategy);
+      if (vs.error) return NextResponse.json({ error: vs.error }, { status: 400 });
+      body.strategy = vs.value;
+    }
+
     // Validate name format if provided
     if (body.name) {
       if (!VALID_NAME_REGEX.test(body.name)) {
@@ -40,7 +54,7 @@ export async function PUT(request, { params }) {
       }
       
       // Check if name already exists (exclude current combo)
-      const existing = await getComboByName(body.name);
+      const existing = await getComboByName(body.name, current.tenantId ?? undefined);
       if (existing && existing.id !== id) {
         return NextResponse.json({ error: "Combo name already exists" }, { status: 400 });
       }
@@ -55,8 +69,8 @@ export async function PUT(request, { params }) {
     }
 
     // Invalidate rotation state (models/strategy/name may have changed)
-    if (prev?.name) resetComboRotation(prev.name);
-    if (combo.name && combo.name !== prev?.name) resetComboRotation(combo.name);
+    if (prev?.name) resetComboRotation(comboRotationKey(prev.tenantId, prev.name));
+    if (combo.name && combo.name !== prev?.name) resetComboRotation(comboRotationKey(combo.tenantId, combo.name));
 
     return NextResponse.json(combo);
   } catch (error) {
@@ -78,7 +92,7 @@ export async function DELETE(request, { params }) {
       return NextResponse.json({ error: "Combo not found" }, { status: 404 });
     }
 
-    if (prev?.name) resetComboRotation(prev.name);
+    if (prev?.name) resetComboRotation(comboRotationKey(prev.tenantId, prev.name));
     
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -1,3 +1,5 @@
+import { comboStrategiesFor, comboRotationKey } from "@/lib/tenancy.js";
+import { gateResponse } from "@/lib/gate.js";
 import {
   extractApiKey, getApiKeyAuth,
   getProviderCredentials, markAccountUnavailable,
@@ -37,6 +39,7 @@ export async function handleTts(request) {
   const apiKey = extractApiKey(request);
   const keyAuth = apiKey ? await getApiKeyAuth(apiKey) : null;
   const tenantId = keyAuth?.tenantId ?? null;
+  { const _gate = await gateResponse(keyAuth, modelStr); if (_gate) return _gate; }
   if (settings.requireApiKey) {
     if (!apiKey) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Missing API key");
     if (!keyAuth || !keyAuth.isActive) return errorResponse(HTTP_STATUS.UNAUTHORIZED, "Invalid API key");
@@ -48,7 +51,7 @@ export async function handleTts(request) {
   // Combo expansion: model may be a combo name → run fallback/round-robin across models
   const comboModels = await getComboModels(modelStr, tenantId);
   if (comboModels) {
-    const comboStrategies = settings.comboStrategies || {};
+    const comboStrategies = await comboStrategiesFor(settings, tenantId);
     const comboStrategy = comboStrategies[modelStr]?.fallbackStrategy || settings.comboStrategy || "fallback";
     const comboStickyLimit = settings.comboStickyRoundRobinLimit;
     log.info("TTS", `Combo "${modelStr}" with ${comboModels.length} models (strategy: ${comboStrategy}, sticky: ${comboStickyLimit})`);
@@ -57,7 +60,7 @@ export async function handleTts(request) {
       models: comboModels,
       handleSingleModel: (b, m) => handleSingleModelTts(b, m, responseFormat, language, style, tenantId),
       log,
-      comboName: modelStr,
+      comboName: comboRotationKey(tenantId, modelStr),
       comboStrategy,
       comboStickyLimit,
     });

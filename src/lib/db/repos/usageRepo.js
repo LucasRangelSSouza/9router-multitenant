@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
 import { getMeta, setMeta } from "../helpers/metaStore.js";
+import { currentRequestContext } from "../../requestContext.js";
 
 function maskApiKey(key) {
   if (!key || typeof key !== "string") return null;
@@ -251,6 +252,14 @@ export async function saveRequestUsage(entry) {
 
     let inserted = false;
 
+    // tenant e combo pedido: do contexto da requisicao; senao, pela chave
+    const ctx = currentRequestContext();
+    let tenantId = entry.tenantId ?? ctx?.tenantId ?? null;
+    if (!tenantId && entry.apiKey) {
+      tenantId = db.get(`SELECT tenantId FROM apiKeys WHERE key = ?`, [entry.apiKey])?.tenantId ?? null;
+    }
+    const requestedModel = entry.requestedModel ?? ctx?.requestedModel ?? null;
+
     // All 3 writes (history insert, daily upsert, lifetime counter) in ONE transaction.
     // better-sqlite3 is sync → no JS yield mid-transaction → no race in same process.
     db.transaction(() => {
@@ -279,10 +288,10 @@ export async function saveRequestUsage(entry) {
       }
 
       db.run(
-        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, tenantId, requestedModel, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           entry.timestamp, entry.provider || null, entry.model || null,
-          entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
+          entry.connectionId || null, entry.apiKey || null, tenantId, requestedModel, entry.endpoint || null,
           promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
           stringifyJson(tokens), stringifyJson({}),
         ]

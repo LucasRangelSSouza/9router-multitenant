@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { parseJson, stringifyJson } from "../helpers/jsonCol.js";
+import { isStrict, requireTenantOrThrow } from "../../tenancy.js";
 
 function rowToNode(row) {
   if (!row) return null;
@@ -10,17 +11,19 @@ function rowToNode(row) {
     id: row.id,
     type: row.type,
     name: row.name,
+    tenantId: row.tenantId ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
 }
 
 function nodeToRow(n) {
-  const { id, type, name, createdAt, updatedAt, ...rest } = n;
+  const { id, type, name, tenantId, createdAt, updatedAt, ...rest } = n;
   return {
     id,
     type: type ?? null,
     name: name ?? null,
+    tenantId: tenantId ?? null,
     data: stringifyJson(rest),
     createdAt,
     updatedAt,
@@ -30,11 +33,11 @@ function nodeToRow(n) {
 function upsert(db, n) {
   const r = nodeToRow(n);
   db.run(
-    `INSERT INTO providerNodes(id, type, name, data, createdAt, updatedAt)
-     VALUES(?, ?, ?, ?, ?, ?)
+    `INSERT INTO providerNodes(id, type, name, tenantId, data, createdAt, updatedAt)
+     VALUES(?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        type=excluded.type, name=excluded.name, data=excluded.data, updatedAt=excluded.updatedAt`,
-    [r.id, r.type, r.name, r.data, r.createdAt, r.updatedAt]
+    [r.id, r.type, r.name, r.tenantId, r.data, r.createdAt, r.updatedAt]
   );
 }
 
@@ -43,6 +46,12 @@ export async function getProviderNodes(filter = {}) {
   const where = [];
   const params = [];
   if (filter.type) { where.push("type = ?"); params.push(filter.type); }
+  if (filter.tenantId === null && isStrict()) return [];   // estrito: sem tenant nao ha no
+  if (filter.tenantId !== undefined && filter.tenantId !== null) {
+    // estrito: so os do tenant (sem dono nunca vaza); padrao: legado visivel
+    where.push(isStrict() ? "tenantId = ?" : "(tenantId = ? OR tenantId IS NULL)");
+    params.push(filter.tenantId);
+  }
   const sql = `SELECT * FROM providerNodes${where.length ? ` WHERE ${where.join(" AND ")}` : ""}`;
   return db.all(sql, params).map(rowToNode);
 }
@@ -53,6 +62,7 @@ export async function getProviderNodeById(id) {
 }
 
 export async function createProviderNode(data) {
+  requireTenantOrThrow(data.tenantId, "provider node");
   const db = await getAdapter();
   const now = new Date().toISOString();
   const node = {
@@ -62,6 +72,7 @@ export async function createProviderNode(data) {
     prefix: data.prefix,
     apiType: data.apiType,
     baseUrl: data.baseUrl,
+    tenantId: data.tenantId || null,
     createdAt: now,
     updatedAt: now,
   };

@@ -49,19 +49,19 @@ export async function getModelInfo(modelStr, tenantId = null) {
     // Provider-node prefixes are user-defined. They must not override built-in
     // provider ids/aliases such as `cf`, `cloudflare-ai`, `openai`, or `hf`.
     if (!RESERVED_PROVIDER_PREFIXES.has(parsed.providerAlias)) {
-      const openaiNodes = await getProviderNodes({ type: "openai-compatible" });
+      const openaiNodes = await getProviderNodes({ type: "openai-compatible", tenantId });
       const matchedOpenAI = openaiNodes.find((node) => node.prefix === parsed.providerAlias);
       if (matchedOpenAI) {
         return { provider: matchedOpenAI.id, model: parsed.model };
       }
 
-      const anthropicNodes = await getProviderNodes({ type: "anthropic-compatible" });
+      const anthropicNodes = await getProviderNodes({ type: "anthropic-compatible", tenantId });
       const matchedAnthropic = anthropicNodes.find((node) => node.prefix === parsed.providerAlias);
       if (matchedAnthropic) {
         return { provider: matchedAnthropic.id, model: parsed.model };
       }
 
-      const embeddingNodes = await getProviderNodes({ type: "custom-embedding" });
+      const embeddingNodes = await getProviderNodes({ type: "custom-embedding", tenantId });
       const matchedEmbedding = embeddingNodes.find((node) => node.prefix === parsed.providerAlias);
       if (matchedEmbedding) {
         return { provider: matchedEmbedding.id, model: parsed.model };
@@ -84,7 +84,7 @@ export async function getModelInfo(modelStr, tenantId = null) {
     return { provider: null, model: parsed.model };
   }
 
-  return getModelInfoCore(modelStr, getModelAliases);
+  return getModelInfoCore(modelStr, isStrict() ? async () => ({}) : getModelAliases);   // estrito: aliases globais do operador nao valem para tenant
 }
 
 /**

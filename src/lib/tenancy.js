@@ -40,10 +40,27 @@ export async function ownershipGuard(request, kind, id) {
   if (!tenantId) return null;
   const { NextResponse } = await import("next/server");
   const db = await import("@/lib/localDb");
-  const get = { connection: db.getProviderConnectionById, combo: db.getComboById, key: db.getApiKeyById }[kind];
+  const get = { connection: db.getProviderConnectionById, combo: db.getComboById, key: db.getApiKeyById, node: db.getProviderNodeById }[kind];
   const row = await get(id);
   if (!row || (row.tenantId ?? null) !== tenantId) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
   return null;
+}
+
+// Chave do estado de rodizio de um combo: por tenant (dois tenants com combo
+// "main" nao compartilham indice de round-robin).
+export function comboRotationKey(tenantId, name) {
+  return tenantId ? `${tenantId}/${name}` : name;
+}
+
+// Estrategia de combo por tenant. Em modo estrito a estrategia vive no proprio
+// combo (combos.strategy) e a global settings.comboStrategies e ignorada.
+export async function comboStrategiesFor(settings, tenantId) {
+  if (!isStrict()) return settings.comboStrategies || {};
+  const out = {};
+  if (!tenantId) return out;
+  const { getCombos } = await import("@/lib/localDb");
+  for (const c of await getCombos(tenantId)) if (c.strategy) out[c.name] = c.strategy;
+  return out;
 }

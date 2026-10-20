@@ -34,3 +34,10 @@ export async function checkTenantRpm(tenantId) {
   arr.push(now);
   return { ok: true, limit };
 }
+
+// Estado atual da janela de RPM deste processo (para a tela de cotas).
+export function tenantRpmState(tenantId, limit) {
+  const arr = hits.get(tenantId) || [];
+  const cutoff = Date.now() - 60000;
+  return { limit: limit ?? null, usedLastMinute: arr.filter((t) => t > cutoff).length };
+}

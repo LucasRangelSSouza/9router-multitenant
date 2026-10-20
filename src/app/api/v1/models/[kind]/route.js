@@ -1,4 +1,4 @@
-import { buildModelsList, tenantScopeForModels } from "../route.js";
+import { buildModelsList, tenantScopeForModels, restrictModelsForKey } from "../route.js";
 
 // URL slug → service kind(s). `web` covers both webSearch and webFetch.
 const KIND_SLUG_MAP = {
@@ -42,7 +42,7 @@ export async function GET(request, { params }) {
     }
 
     const tenantId = await tenantScopeForModels(request);
-    const data = await buildModelsList(kindFilter, { tenantId });
+    const data = await restrictModelsForKey(request, await buildModelsList(kindFilter, { tenantId }));
     return Response.json({ object: "list", data }, {
       headers: { "Access-Control-Allow-Origin": "*" },
     });

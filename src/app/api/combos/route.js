@@ -1,6 +1,7 @@
 import { isStrict, tenantIdFromRequest } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { getCombos, createCombo, getComboByName } from "@/lib/localDb";
+import { validateComboModels, validateComboStrategy } from "@/lib/keyScope.js";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +11,7 @@ const VALID_NAME_REGEX = /^[a-zA-Z0-9_.\-]+$/;
 // GET /api/combos - Get all combos (optionally scoped to ?tenantId=)
 export async function GET(request) {
   try {
-    const { searchParams } = new URL(request.url);
-    const tenantId = searchParams.get("tenantId");
+    const tenantId = tenantIdFromRequest(request);
     const combos = tenantId ? await getCombos(tenantId) : await getCombos();
     return NextResponse.json({ combos });
   } catch (error) {
@@ -46,7 +46,12 @@ export async function POST(request) {
       return NextResponse.json({ error: "Combo name already exists" }, { status: 400 });
     }
 
-    const combo = await createCombo({ name, models: models || [], kind: kind || null, tenantId: tenantId || null });
+    const vm = await validateComboModels(tenantId, models || [], name);
+    if (vm.error) return NextResponse.json({ error: vm.error }, { status: 400 });
+    const vs = validateComboStrategy(body.strategy);
+    if (vs.error) return NextResponse.json({ error: vs.error }, { status: 400 });
+
+    const combo = await createCombo({ name, models: models || [], kind: kind || null, strategy: vs.value, tenantId: tenantId || null });
 
     return NextResponse.json(combo, { status: 201 });
   } catch (error) {
