@@ -11,7 +11,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # npm do Node 22 falha ao montar esta árvore de dependências com
+          # "edgesOut" antes de executar a suíte. Node 24 usa o resolvedor
+          # que também é validado no ambiente local.
+          node-version: 24
       - run: npm install --no-audit --no-fund
       - run: npm install --no-audit --no-fund
         working-directory: tests
