@@ -14,18 +14,27 @@ export default function TenantSelector() {
   const setSelectedTenantId = useTenantStore((s) => s.setSelectedTenantId);
   const createTenant = useTenantStore((s) => s.createTenant);
   const [creating, setCreating] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [newName, setNewName] = useState("");
+  const current = tenants.find((t) => t.id === selectedTenantId);
 
   useEffect(() => {
     fetchTenants();
   }, [fetchTenants]);
 
-  const handleCreate = async () => {
-    const name = window.prompt("New tenant name:");
-    if (!name || !name.trim()) return;
+  // Spec 11 §8.4: formulario no lugar do prompt() do navegador.
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    if (!newName.trim()) return;
     setCreating(true);
-    const { error } = await createTenant(name);
+    const { error } = await createTenant(newName);
     setCreating(false);
-    if (error) alert(error);
+    if (error) {
+      alert(error);
+      return;
+    }
+    setNewName("");
+    setShowForm(false);
   };
 
   return (
@@ -45,7 +54,7 @@ export default function TenantSelector() {
       </select>
       <button
         type="button"
-        onClick={handleCreate}
+        onClick={() => setShowForm((v) => !v)}
         disabled={creating}
         className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface/60 text-text-muted hover:text-primary hover:border-primary/50 transition-colors"
         title="New tenant"
@@ -53,6 +62,23 @@ export default function TenantSelector() {
       >
         <span className="material-symbols-outlined text-[16px]">add</span>
       </button>
+      {showForm && (
+        <form onSubmit={handleCreate} className="flex items-center gap-1">
+          <input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Tenant name"
+            className="h-8 rounded-lg border border-border bg-surface/60 px-2 text-sm"
+          />
+          <button type="submit" disabled={creating} className="h-8 rounded-lg border border-border px-2 text-sm">
+            Create
+          </button>
+        </form>
+      )}
+      <span className="ml-2 text-xs text-text-muted whitespace-nowrap">
+        Viewing: {current ? current.name : "Global / All"}
+      </span>
     </div>
   );
 }
