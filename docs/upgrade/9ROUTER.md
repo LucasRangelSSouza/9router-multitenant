@@ -34,3 +34,9 @@ Atualização **manual, sob demanda, uma vez por mês**. Nada atualiza sozinho. 
 
 ## Registro
 Cada janela gera `UPGRADE_LOG_<ano-mês>.md` com versões, conflitos, tempo, testes, problemas e decisão (seguiu, adiou, reverteu).
+
+## Achados do primeiro ensaio (22/10/2026)
+O merge 0.5.55 → 0.5.104 foi ensaiado de verdade em branch descartável: 18 conflitos, dos quais 10 tocam o isolamento
+e o controle de acesso por chave (o upstream criou o modelo `access`, equivalente ao nosso `allowedCombos`).
+Antes do próximo ensaio: escrever os testes do contrato de consumo do LUAR no repositório do motor e decidir adaptar
+`allowedCombos` → `access`. Relatório completo em `specs/anexos/11/estudos/9router-ensaio-merge-22-10.md`.
