@@ -31,8 +31,8 @@ O restante (dashboard, provedores, `gitbook/`, `i18n/`, `cli/`) vem do upstream.
 
 ```bash
 npm ci
-npm run dev                                   # painel em http://localhost:20128
-npx vitest run tests/unit/multi-tenant-isolation.test.js   # isolamento
+npm run dev                                   # painel em http://localhost:20127
+cd tests && npm ci && npx vitest run unit/multi-tenant-isolation.test.js   # isolamento
 npm run build
 ```
 
