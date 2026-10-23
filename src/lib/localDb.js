@@ -10,7 +10,7 @@ export {
   createProviderNode, updateProviderNode, deleteProviderNode,
   getProxyPools, getProxyPoolById,
   createProxyPool, updateProxyPool, deleteProxyPool,
-  getApiKeys, getApiKeyById, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyAuth,
+  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey, getApiKeyAuth,
   getCombos, getComboById, getComboByName,
   createCombo, updateCombo, deleteCombo,
   getTenants, getTenantById, createTenant, updateTenant, deleteTenantCascade, getTenantUsage, getTenantRequests, getTenantCounts,

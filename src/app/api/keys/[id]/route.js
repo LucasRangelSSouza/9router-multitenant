@@ -2,6 +2,7 @@ import { ownershipGuard } from "@/lib/tenancy.js";
 import { NextResponse } from "next/server";
 import { deleteApiKey, getApiKeyById, updateApiKey } from "@/lib/localDb";
 import { validateAllowedCombos } from "@/lib/keyScope.js";
+import { validateKeyAccessInput } from "@/shared/utils/keyAccess.js";
 
 // GET /api/keys/[id] - Get single key
 export async function GET(request, { params }) {
@@ -28,7 +29,7 @@ export async function PUT(request, { params }) {
     const denied = await ownershipGuard(request, "key", id);
     if (denied) return denied;
     const body = await request.json();
-    const { isActive } = body;
+    const { isActive, access } = body;
 
     const existing = await getApiKeyById(id);
     if (!existing) {
@@ -41,6 +42,11 @@ export async function PUT(request, { params }) {
       const allowed = await validateAllowedCombos(existing.tenantId, body.allowedCombos);
       if (allowed.error) return NextResponse.json({ error: allowed.error }, { status: 400 });
       updateData.allowedCombos = allowed.value;
+    }
+    if (access !== undefined) {
+      const checked = validateKeyAccessInput(access);
+      if (!checked.ok) return NextResponse.json({ error: checked.error }, { status: 400 });
+      updateData.access = checked.value;
     }
 
     const updated = await updateApiKey(id, updateData);
