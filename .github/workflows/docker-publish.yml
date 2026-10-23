@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  GHCR_IMAGE: ghcr.io/lucasrangelssouza/9router-multitenant
+  GHCR_IMAGE: ghcr.io/rangeltech/luar-ai-gateway
 
 jobs:
   build-and-push:
