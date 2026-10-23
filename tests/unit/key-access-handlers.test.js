@@ -37,6 +37,9 @@ vi.mock("@/sse/services/auth.js", () => ({
     return a?.startsWith("Bearer ") ? a.slice(7) : request.headers.get("x-api-key");
   },
   isValidApiKey: async () => true,
+  // fork LUAR: o handler resolve a chave/tenant pelo auth.js; nos testes de acesso a chave e livre e sem tenant
+  getApiKeyAuth: async () => null,
+  resolveRequestTenant: async () => ({ tenantId: null, keyAuth: null }),
 }));
 vi.mock("@/sse/services/tokenRefresh.js", () => ({
   checkAndRefreshToken: async (_p, c) => c,

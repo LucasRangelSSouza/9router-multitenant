@@ -14,6 +14,9 @@ vi.mock("../../src/sse/services/auth.js", () => ({
   }),
   markAccountUnavailable: vi.fn(),
   clearAccountError: mocks.clearAccountError,
+  // fork LUAR: o handler resolve chave/tenant pelo auth.js; aqui sem tenant
+  getApiKeyAuth: async () => null,
+  resolveRequestTenant: async () => ({ tenantId: null, keyAuth: null }),
   extractApiKey: () => "client-key",
   isValidApiKey: vi.fn(),
 }));

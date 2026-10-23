@@ -6,7 +6,9 @@ export default {
   name: "combos-unico-por-tenant",
   up(db) {
     const t = db.get(`SELECT sql FROM sqlite_master WHERE type='table' AND name='combos'`);
-    if (t && /name\s+TEXT\s+UNIQUE/i.test(t.sql || "")) {
+    // sem a tabela (banco legado parcial): o sync declarativo cria a tabela e os indices depois
+    if (!t) return;
+    if (/name\s+TEXT\s+UNIQUE/i.test(t.sql || "")) {
       db.exec(`DROP INDEX IF EXISTS idx_combo_name`);
       db.exec(`DROP INDEX IF EXISTS idx_combo_tenant`);
       db.exec(`ALTER TABLE combos RENAME TO combos_old_unique`);
