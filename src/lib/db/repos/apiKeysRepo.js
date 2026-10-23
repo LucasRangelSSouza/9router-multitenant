@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from "uuid";
 import { getAdapter } from "../driver.js";
 import { requireTenantOrThrow } from "../../tenancy.js";
+import { keyAccessFromColumns, keyAccessToColumns } from "@/shared/utils/keyAccess.js";
+import { KEY_ACCESS_UNRESTRICTED } from "@/shared/constants/keyAccess.js";
 
 function rowToKey(row) {
   if (!row) return null;
@@ -13,6 +15,7 @@ function rowToKey(row) {
     tenantId: row.tenantId ?? null,
     allowedCombos: parseAllowed(row.allowedCombos),
     createdAt: row.createdAt,
+    access: keyAccessFromColumns(row.accessRestricted, row.accessAllow),
   };
 }
 
@@ -38,6 +41,14 @@ export async function getApiKeyById(id) {
   return rowToKey(row);
 }
 
+// Used by the /v1 handlers to read the presented key's access settings.
+export async function getApiKeyByKey(key) {
+  if (!key) return null;
+  const db = await getAdapter();
+  const row = db.get(`SELECT * FROM apiKeys WHERE key = ?`, [key]);
+  return rowToKey(row);
+}
+
 // tenantId: pass the owning tenant's id for all new code paths. Left optional
 // (defaults to null) only so existing callers that haven't been migrated yet
 // (onda 2) keep working — a null tenantId means "legacy/global key", same
@@ -57,10 +68,12 @@ export async function createApiKey(name, machineId, tenantId = null, opts = {}) 
     tenantId: tenantId || null,
     allowedCombos: Array.isArray(opts.allowedCombos) ? opts.allowedCombos : null,
     createdAt: new Date().toISOString(),
+    access: { restricted: false, allow: [] },
   };
+  const cols = keyAccessToColumns(KEY_ACCESS_UNRESTRICTED);
   db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, tenantId, allowedCombos, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.tenantId, serializeAllowed(apiKey.allowedCombos), apiKey.createdAt]
+    `INSERT INTO apiKeys(id, key, name, machineId, isActive, tenantId, allowedCombos, createdAt, accessRestricted, accessAllow) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.tenantId, serializeAllowed(apiKey.allowedCombos), apiKey.createdAt, cols.accessRestricted, cols.accessAllow]
   );
   return apiKey;
 }
@@ -72,11 +85,12 @@ export async function updateApiKey(id, data) {
     const row = db.get(`SELECT * FROM apiKeys WHERE id = ?`, [id]);
     if (!row) return;
     const merged = { ...rowToKey(row), ...data };
+    const cols = keyAccessToColumns(merged.access);
     db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, tenantId = ?, allowedCombos = ? WHERE id = ?`,
-      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, merged.tenantId ?? null, serializeAllowed(merged.allowedCombos), id]
+      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, tenantId = ?, allowedCombos = ?, accessRestricted = ?, accessAllow = ? WHERE id = ?`,
+      [merged.key, merged.name, merged.machineId, merged.isActive ? 1 : 0, merged.tenantId ?? null, serializeAllowed(merged.allowedCombos), cols.accessRestricted, cols.accessAllow, id]
     );
-    result = merged;
+    result = rowToKey(db.get(`SELECT * FROM apiKeys WHERE id = ?`, [id]));
   });
   return result;
 }
